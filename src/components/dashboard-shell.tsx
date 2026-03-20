@@ -183,12 +183,9 @@ export function DashboardShell({ initialSnapshot }: DashboardShellProps) {
     <main className="page-shell">
       <section className="hero guided-hero">
         <div>
-          <p className="eyebrow">Learning optimizer</p>
-          <h1>Upload notes, verify the map, then move through recall in order.</h1>
-          <p className="hero-copy">
-            The shell is now staged around one guided path: process notes, inspect the mindmap, sweep familiarity,
-            quiz, and continue review.
-          </p>
+          <p className="eyebrow">Learning Optimizer</p>
+          <h1>Turn notes into a study map.</h1>
+          <p className="hero-copy">Upload notes, inspect the map, and keep moving through recall.</p>
           <div className="hero-message">
             <strong>{currentStage.label}</strong>
             <span>{lastAction ?? currentStage.description}</span>
