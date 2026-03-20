@@ -1,10 +1,11 @@
 import test from "node:test";
 import assert from "node:assert/strict";
-import { mkdtemp, rm } from "node:fs/promises";
+import { mkdtemp, rm, writeFile } from "node:fs/promises";
 import path from "node:path";
 import os from "node:os";
 
 import { createModule, createSource, generateQuizzes, getDashboardSnapshot, submitQuizAttempt } from "@/lib/app";
+import { seedStore } from "@/lib/seed";
 import { resetStoreCache } from "@/lib/store";
 
 test("dashboard flow ingests a source, builds graph data, and updates review after a quiz", async () => {
@@ -76,6 +77,190 @@ test("regenerating quizzes drops stale attempts tied to replaced quiz item ids",
     assert.equal(afterRegeneration.quizzes.length, regenerated.length);
     assert.equal(afterRegeneration.quizzes.some((item) => item.id === firstQuiz.id), false);
   } finally {
+    delete process.env.LEARNING_OPTIMIZER_DATA_DIR;
+    resetStoreCache();
+    await rm(tempDir, { recursive: true, force: true });
+  }
+});
+
+test("source ingestion prefers Gemini semantic output when it is available", async () => {
+  const tempDir = await mkdtemp(path.join(os.tmpdir(), "learning-optimizer-"));
+  const originalFetch = global.fetch;
+  const originalGeminiKey = process.env.GEMINI_API_KEY;
+  const originalGeminiModel = process.env.GEMINI_MODEL;
+  process.env.LEARNING_OPTIMIZER_DATA_DIR = tempDir;
+  process.env.GEMINI_API_KEY = "test-gemini-key";
+  process.env.GEMINI_MODEL = "gemini-test-model";
+  resetStoreCache();
+
+  global.fetch = (async () =>
+    ({
+      ok: true,
+      json: async () => ({
+        candidates: [
+          {
+            content: {
+              parts: [
+                {
+                  text: JSON.stringify({
+                    summary: "Bayesian learning notes about posterior updates.",
+                    concepts: [
+                      {
+                        title: "Bayesian posterior",
+                        summary: "Posterior beliefs combine priors with observed evidence.",
+                        confidence: 0.91,
+                        evidence: ["Posterior updates combine priors with new evidence."]
+                      },
+                      {
+                        title: "Conjugate prior",
+                        summary: "A conjugate prior preserves tractable posterior updates.",
+                        confidence: 0.86,
+                        evidence: ["Conjugate priors make posterior updates tractable."]
+                      }
+                    ],
+                    relationships: [
+                      {
+                        sourceTitle: "Conjugate prior",
+                        targetTitle: "Bayesian posterior",
+                        type: "applies_to",
+                        weight: 0.82,
+                        evidence: ["Conjugate priors make posterior updates tractable."]
+                      }
+                    ]
+                  })
+                }
+              ]
+            }
+          }
+        ]
+      })
+    }) as Response) as typeof fetch;
+
+  try {
+    const moduleRecord = await createModule({
+      title: "Probabilistic Models",
+      description: "Bayesian inference and conjugate updates."
+    });
+
+    await createSource({
+      moduleId: moduleRecord.id,
+      title: "Bayesian inference notes",
+      content:
+        "Posterior updates combine priors with new evidence. Conjugate priors make posterior updates tractable.",
+      processor: "auto"
+    });
+
+    const snapshot = await getDashboardSnapshot();
+    const posterior = snapshot.conceptRecords.find((concept) => concept.title === "Bayesian Posterior");
+    const prior = snapshot.conceptRecords.find((concept) => concept.title === "Conjugate Prior");
+    assert.ok(posterior);
+    assert.ok(prior);
+    assert.ok(
+      snapshot.edgeRecords.some(
+        (edge) =>
+          edge.type === "applies_to" &&
+          edge.sourceConceptId === prior?.id &&
+          edge.targetConceptId === posterior?.id
+      )
+    );
+  } finally {
+    global.fetch = originalFetch;
+    if (originalGeminiKey) {
+      process.env.GEMINI_API_KEY = originalGeminiKey;
+    } else {
+      delete process.env.GEMINI_API_KEY;
+    }
+    if (originalGeminiModel) {
+      process.env.GEMINI_MODEL = originalGeminiModel;
+    } else {
+      delete process.env.GEMINI_MODEL;
+    }
+    delete process.env.LEARNING_OPTIMIZER_DATA_DIR;
+    resetStoreCache();
+    await rm(tempDir, { recursive: true, force: true });
+  }
+});
+
+test("source ingestion falls back to heuristics when Gemini is unavailable", async () => {
+  const tempDir = await mkdtemp(path.join(os.tmpdir(), "learning-optimizer-"));
+  const originalFetch = global.fetch;
+  const originalGeminiKey = process.env.GEMINI_API_KEY;
+  process.env.LEARNING_OPTIMIZER_DATA_DIR = tempDir;
+  process.env.GEMINI_API_KEY = "test-gemini-key";
+  resetStoreCache();
+
+  global.fetch = (async () => {
+    throw new Error("simulated Gemini outage");
+  }) as typeof fetch;
+
+  try {
+    const moduleRecord = await createModule({
+      title: "Latent Variable Models",
+      description: "Inference with hidden variables."
+    });
+
+    await createSource({
+      moduleId: moduleRecord.id,
+      title: "Latent variable notes",
+      content:
+        "Latent variables explain hidden structure in the data. Posterior inference estimates hidden causes from observed evidence.",
+      processor: "gemini"
+    });
+
+    const snapshot = await getDashboardSnapshot();
+    assert.ok(snapshot.conceptRecords.some((concept) => concept.title.toLowerCase().includes("latent variable")));
+  } finally {
+    global.fetch = originalFetch;
+    if (originalGeminiKey) {
+      process.env.GEMINI_API_KEY = originalGeminiKey;
+    } else {
+      delete process.env.GEMINI_API_KEY;
+    }
+    delete process.env.LEARNING_OPTIMIZER_DATA_DIR;
+    resetStoreCache();
+    await rm(tempDir, { recursive: true, force: true });
+  }
+});
+
+test("legacy source rehydration stays heuristic even when Gemini is configured", async () => {
+  const tempDir = await mkdtemp(path.join(os.tmpdir(), "learning-optimizer-"));
+  const originalFetch = global.fetch;
+  const originalGeminiKey = process.env.GEMINI_API_KEY;
+  process.env.LEARNING_OPTIMIZER_DATA_DIR = tempDir;
+  process.env.GEMINI_API_KEY = "test-gemini-key";
+  resetStoreCache();
+
+  const seeded = seedStore();
+  const legacyStore = {
+    ...seeded,
+    chunks: [],
+    concepts: [],
+    edges: [],
+    reviewStates: [],
+    quizItems: [],
+    quizAttempts: [],
+    reminders: []
+  };
+
+  let fetchCalls = 0;
+  global.fetch = (async () => {
+    fetchCalls += 1;
+    throw new Error("Gemini should not be called during legacy rehydration");
+  }) as typeof fetch;
+
+  try {
+    await writeFile(path.join(tempDir, "store.json"), JSON.stringify(legacyStore, null, 2), "utf8");
+
+    const snapshot = await getDashboardSnapshot();
+    assert.ok(snapshot.conceptRecords.length > 0);
+    assert.equal(fetchCalls, 0);
+  } finally {
+    global.fetch = originalFetch;
+    if (originalGeminiKey) {
+      process.env.GEMINI_API_KEY = originalGeminiKey;
+    } else {
+      delete process.env.GEMINI_API_KEY;
+    }
     delete process.env.LEARNING_OPTIMIZER_DATA_DIR;
     resetStoreCache();
     await rm(tempDir, { recursive: true, force: true });

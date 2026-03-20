@@ -81,6 +81,9 @@ The current prototype supports text ingestion. The planned direction is Gemini-b
 
 Today, the active implementation is still text-first and prototype-grade.
 
+The ingestion service now prefers Gemini-backed semantic extraction when `GEMINI_API_KEY` is configured, and falls
+back to the existing heuristic chunk-and-extract path when Gemini is unavailable or returns unusable output.
+
 ### 5. Reminder Settings
 
 Reminder settings are now configurable through the app and persisted through the `/api/reminders` route.
@@ -143,6 +146,18 @@ Run the dev server:
 ```bash
 npm run dev
 ```
+
+Gemini-backed ingestion is optional. To enable it locally, copy `.env.example` to `.env.local` and set:
+
+```bash
+GEMINI_API_KEY=your_api_key
+GEMINI_MODEL=gemini-2.0-flash
+GEMINI_API_BASE_URL=https://generativelanguage.googleapis.com/v1beta/models
+```
+
+`GEMINI_API_BASE_URL` is optional and only needed if the Gemini endpoint needs to be overridden.
+
+If `GEMINI_API_KEY` is not set, source ingestion continues to work through the heuristic fallback path.
 
 Build for production:
 
@@ -207,6 +222,24 @@ If your local prototype data lives somewhere other than `.data/store.json`, eith
 If a legacy Postgres `app_state` snapshot table is still present, the runtime adapter can import that snapshot into the normalized tables on first Postgres load.
 
 The bootstrap SQL for the current Postgres store lives in `db/postgres.sql`.
+
+## Gemini Ingestion Contract
+
+The existing `POST /api/sources` route remains text-first and still accepts:
+
+- `moduleId`
+- `title`
+- `content`
+- optional `kind`
+
+It now also accepts an optional `processor` value:
+
+- `auto` (default): try Gemini first, then fall back to heuristics
+- `gemini`: prefer Gemini but still fall back if it is unavailable
+- `heuristic`: bypass Gemini and use the legacy path directly
+
+The stored `SourceDocument` shape is unchanged. Gemini only changes how concepts and relationships are derived from
+the submitted source text.
 
 ## Near-Term Next Steps
 
