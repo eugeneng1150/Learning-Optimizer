@@ -209,4 +209,5 @@ Additional documentation:
 
 - [docs/PROJECT_OVERVIEW.md](docs/PROJECT_OVERVIEW.md)
 - [docs/AGENTS.md](docs/AGENTS.md)
+- [docs/learn.md](docs/learn.md)
 - [docs/PARALLEL_POSTGRES_PLAN.md](docs/PARALLEL_POSTGRES_PLAN.md)
