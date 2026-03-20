@@ -7,6 +7,7 @@ If you are picking up work on this repo, read this file first, then read:
 - `README.md`
 - `docs/PROJECT_OVERVIEW.md`
 - `docs/AGENTS.md`
+- `docs/PARALLEL_POSTGRES_PLAN.md` if the active task is Postgres normalization
 
 ## Project
 
@@ -128,6 +129,17 @@ The next serious engineering step is:
 3. move modules, sources, concepts, edges, review states, quiz items, and reminder settings into first-class tables
 
 This is the cleanest next move because nearly every later feature depends on reliable structured persistence.
+
+## Active Parallelization Setup
+
+The repo now has local task branches prepared for the Postgres normalization phase:
+
+- `codex-db-schema`
+- `codex-repositories`
+- `codex-migration-bootstrap`
+- `codex-integration`
+
+The exact split for those branches is documented in `docs/PARALLEL_POSTGRES_PLAN.md`.
 
 ## How To Resume In A New Thread
 
