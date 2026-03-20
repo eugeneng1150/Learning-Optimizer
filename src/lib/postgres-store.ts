@@ -16,6 +16,7 @@ const ALL_TABLES = [
   "quiz_item_evidence_refs",
   "quiz_item_concepts",
   "quiz_items",
+  "concept_familiarities",
   "review_states",
   "edge_evidence_refs",
   "concept_edges",
@@ -357,6 +358,16 @@ async function writeNormalizedStore(client: PoolClient, store: AppStore): Promis
     );
   }
 
+  for (const familiarity of normalized.conceptFamiliarities) {
+    await client.query(
+      `
+        INSERT INTO concept_familiarities (user_id, concept_id, rating, updated_at)
+        VALUES ($1, $2, $3, $4)
+      `,
+      [familiarity.userId, familiarity.conceptId, familiarity.rating, familiarity.updatedAt]
+    );
+  }
+
   for (const item of normalized.quizItems) {
     await client.query(
       `
@@ -513,6 +524,7 @@ export async function loadStoreFromPostgres(): Promise<AppStore> {
       edgesResult,
       edgeEvidenceResult,
       reviewStatesResult,
+      conceptFamiliaritiesResult,
       quizItemsResult,
       quizItemConceptsResult,
       quizItemEvidenceResult,
@@ -638,6 +650,18 @@ export async function loadStoreFromPostgres(): Promise<AppStore> {
           SELECT user_id, concept_id, stability, difficulty, retrievability, due_at, last_reviewed_at
           FROM review_states
           ORDER BY due_at, concept_id
+        `
+      ),
+      client.query<{
+        user_id: string;
+        concept_id: string;
+        rating: 1 | 2 | 3 | 4 | 5;
+        updated_at: string | Date;
+      }>(
+        `
+          SELECT user_id, concept_id, rating, updated_at
+          FROM concept_familiarities
+          ORDER BY updated_at DESC, concept_id
         `
       ),
       client.query<{
@@ -825,6 +849,13 @@ export async function loadStoreFromPostgres(): Promise<AppStore> {
       lastReviewedAt: toOptionalIsoString(row.last_reviewed_at)
     }));
 
+    const conceptFamiliarities = conceptFamiliaritiesResult.rows.map((row) => ({
+      conceptId: row.concept_id,
+      userId: row.user_id,
+      rating: row.rating,
+      updatedAt: toIsoString(row.updated_at)
+    }));
+
     const quizItems = quizItemsResult.rows.map((row) => ({
       id: row.id,
       userId: row.user_id,
@@ -873,6 +904,7 @@ export async function loadStoreFromPostgres(): Promise<AppStore> {
         concepts,
         edges,
         reviewStates,
+        conceptFamiliarities,
         quizItems,
         quizAttempts,
         reminders,

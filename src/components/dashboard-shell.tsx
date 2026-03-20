@@ -68,6 +68,7 @@ export function DashboardShell({ initialSnapshot }: DashboardShellProps) {
   const [isRefreshing, startTransition] = useTransition();
 
   const selectedConcept = snapshot.conceptRecords.find((concept) => concept.id === selectedConceptId);
+  const selectedFamiliarity = snapshot.conceptFamiliarities.find((record) => record.conceptId === selectedConceptId);
   const relatedEdges = snapshot.edgeRecords.filter(
     (edge) => edge.sourceConceptId === selectedConceptId || edge.targetConceptId === selectedConceptId
   );
@@ -379,6 +380,7 @@ export function DashboardShell({ initialSnapshot }: DashboardShellProps) {
           <div className="side-column">
             <ConceptPanel
               concept={selectedConcept}
+              familiarityRating={selectedFamiliarity?.rating}
               modules={snapshot.modules}
               relatedEdges={relatedEdges}
               onMutate={refreshInTransition}

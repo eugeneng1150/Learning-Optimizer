@@ -57,6 +57,7 @@ export function summarizeStore(store: AppStore): Record<keyof AppStore, number> 
     concepts: store.concepts.length,
     edges: store.edges.length,
     reviewStates: store.reviewStates.length,
+    conceptFamiliarities: store.conceptFamiliarities.length,
     quizItems: store.quizItems.length,
     quizAttempts: store.quizAttempts.length,
     reminders: store.reminders.length,

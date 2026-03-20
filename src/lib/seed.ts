@@ -56,6 +56,7 @@ export const seedStore = (): AppStore => ({
   concepts: [],
   edges: [],
   reviewStates: [],
+  conceptFamiliarities: [],
   quizItems: [],
   quizAttempts: [],
   reminders: [],

@@ -15,6 +15,7 @@ export function normalizeStore(store: Partial<AppStore>): AppStore {
     concepts: store.concepts ?? seeded.concepts,
     edges: store.edges ?? seeded.edges,
     reviewStates: store.reviewStates ?? seeded.reviewStates,
+    conceptFamiliarities: store.conceptFamiliarities ?? seeded.conceptFamiliarities,
     quizItems: store.quizItems ?? seeded.quizItems,
     quizAttempts: store.quizAttempts ?? seeded.quizAttempts,
     reminders: store.reminders ?? seeded.reminders,

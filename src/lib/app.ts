@@ -2,14 +2,22 @@ import { createId, getStore, saveStore } from "@/lib/store";
 import { buildEdges, computeModuleSimilarity, mergeConcepts, toConceptNode } from "@/lib/services/graph";
 import { chunkText, extractCandidateConcepts } from "@/lib/services/ingestion";
 import { generateQuizItems, scoreAnswer } from "@/lib/services/quiz";
-import { buildReminderJobs, ensureReviewState, listDueConcepts, updateReviewState } from "@/lib/services/review";
+import {
+  applyFamiliarityRating,
+  buildReminderJobs,
+  ensureReviewState,
+  listDueConcepts,
+  updateReviewState
+} from "@/lib/services/review";
 import {
   AppStore,
   ConceptEdge,
   ConceptEdgeRecord,
+  ConceptFamiliarityRecord,
   ConceptNode,
   ConceptRecord,
   DueConcept,
+  FamiliarityRating,
   ModuleRecord,
   QuizAttempt,
   QuizItem,
@@ -26,6 +34,7 @@ export interface DashboardSnapshot {
   };
   conceptRecords: ConceptRecord[];
   edgeRecords: ConceptEdgeRecord[];
+  conceptFamiliarities: ConceptFamiliarityRecord[];
   due: DueConcept[];
   quizzes: QuizItem[];
   reminders: AppStore["reminders"];
@@ -96,10 +105,66 @@ function reconcileQuizAttempts(quizItems: QuizItem[], quizAttempts: QuizAttempt[
   return quizAttempts.filter((attempt) => validQuizItemIds.has(attempt.quizItemId));
 }
 
+function listDueConceptsForStore(store: AppStore): DueConcept[] {
+  return listDueConcepts(store.concepts, store.reviewStates, store.conceptFamiliarities);
+}
+
+function getDefaultQuizConcepts(store: AppStore): ConceptRecord[] {
+  const dueConcepts = listDueConceptsForStore(store)
+    .slice(0, 4)
+    .map((item) => item.concept);
+
+  return dueConcepts.length ? dueConcepts : store.concepts.slice(0, 4);
+}
+
+function refreshQuizSet(store: AppStore): AppStore {
+  const quizItems = generateQuizItems(store.users[0].id, getDefaultQuizConcepts(store), store.edges);
+
+  return {
+    ...store,
+    quizItems,
+    quizAttempts: reconcileQuizAttempts(quizItems, store.quizAttempts)
+  };
+}
+
+function upsertReviewState(reviewStates: ReviewState[], nextState: ReviewState): ReviewState[] {
+  return reviewStates.some((state) => state.conceptId === nextState.conceptId)
+    ? reviewStates.map((state) => (state.conceptId === nextState.conceptId ? nextState : state))
+    : [...reviewStates, nextState];
+}
+
+function upsertConceptFamiliarity(
+  conceptFamiliarities: ConceptFamiliarityRecord[],
+  nextRecord: ConceptFamiliarityRecord
+): ConceptFamiliarityRecord[] {
+  return conceptFamiliarities.some((record) => record.conceptId === nextRecord.conceptId)
+    ? conceptFamiliarities.map((record) => (record.conceptId === nextRecord.conceptId ? nextRecord : record))
+    : [...conceptFamiliarities, nextRecord];
+}
+
+function dedupeConceptFamiliarities(conceptFamiliarities: ConceptFamiliarityRecord[]): ConceptFamiliarityRecord[] {
+  const latestByConceptId = new Map<string, ConceptFamiliarityRecord>();
+
+  for (const record of conceptFamiliarities) {
+    const existing = latestByConceptId.get(record.conceptId);
+    if (!existing || existing.updatedAt.localeCompare(record.updatedAt) < 0) {
+      latestByConceptId.set(record.conceptId, record);
+    }
+  }
+
+  return Array.from(latestByConceptId.values());
+}
+
+function normalizeFamiliarityRating(value: number): FamiliarityRating {
+  return Math.max(1, Math.min(5, Math.round(value))) as FamiliarityRating;
+}
+
 export async function getDashboardSnapshot(): Promise<DashboardSnapshot> {
   const store = await hydrateStore();
-  const due = listDueConcepts(store.concepts, store.reviewStates);
-  const quizzes = store.quizItems.length ? store.quizItems : generateQuizItems(store.users[0].id, store.concepts, store.edges);
+  const due = listDueConceptsForStore(store);
+  const quizzes = store.quizItems.length
+    ? store.quizItems
+    : generateQuizItems(store.users[0].id, getDefaultQuizConcepts(store), store.edges);
 
   if (!store.quizItems.length && quizzes.length) {
     await saveStore({
@@ -125,6 +190,7 @@ export async function getDashboardSnapshot(): Promise<DashboardSnapshot> {
     },
     conceptRecords: store.concepts,
     edgeRecords: store.edges,
+    conceptFamiliarities: store.conceptFamiliarities,
     due,
     quizzes,
     reminders: store.reminders,
@@ -187,26 +253,26 @@ export async function createSource(input: {
     source
   );
 
-  nextStore.quizItems = generateQuizItems(store.users[0].id, nextStore.concepts, nextStore.edges);
-  nextStore.quizAttempts = reconcileQuizAttempts(nextStore.quizItems, nextStore.quizAttempts);
-  nextStore.reminders = [
-    ...nextStore.reminders,
+  const refreshedStore = refreshQuizSet(nextStore);
+  refreshedStore.reminders = [
+    ...refreshedStore.reminders,
     ...buildReminderJobs(
       store.users[0].id,
-      listDueConcepts(nextStore.concepts, nextStore.reviewStates)
+      listDueConceptsForStore(refreshedStore)
         .slice(0, 5)
         .map((item) => item.concept.id),
-      nextStore.reminderSettings[0]
+      refreshedStore.reminderSettings[0]
     )
   ];
 
-  await saveStore(nextStore);
+  await saveStore(refreshedStore);
   return source;
 }
 
 export async function updateConcept(
   conceptId: string,
   input: Partial<Pick<ConceptRecord, "title" | "summary" | "status" | "pinned">> & {
+    familiarityRating?: FamiliarityRating;
     mergeWithId?: string;
   }
 ): Promise<ConceptRecord> {
@@ -241,12 +307,17 @@ export async function updateConcept(
       ...store,
       concepts: store.concepts.filter((item) => item.id !== concept.id),
       edges: nextEdges,
-      reviewStates: store.reviewStates.map((state) =>
-        state.conceptId === concept.id ? { ...state, conceptId: mergeTarget.id } : state
+      reviewStates: store.reviewStates
+        .map((state) => (state.conceptId === concept.id ? { ...state, conceptId: mergeTarget.id } : state))
+        .filter((state, index, states) => states.findIndex((candidate) => candidate.conceptId === state.conceptId) === index),
+      conceptFamiliarities: dedupeConceptFamiliarities(
+        store.conceptFamiliarities.map((record) =>
+          record.conceptId === concept.id ? { ...record, conceptId: mergeTarget.id } : record
+        )
       )
     };
 
-    await saveStore(nextStore);
+    await saveStore(refreshQuizSet(nextStore));
     return mergeTarget;
   }
 
@@ -256,7 +327,27 @@ export async function updateConcept(
   concept.pinned = input.pinned ?? concept.pinned;
   concept.updatedAt = new Date().toISOString();
 
-  await saveStore(store);
+  let nextStore: AppStore = store;
+
+  if (typeof input.familiarityRating === "number") {
+    const rating = normalizeFamiliarityRating(input.familiarityRating);
+    const reviewState =
+      store.reviewStates.find((item) => item.conceptId === concept.id) ?? ensureReviewState(store.users[0].id, concept.id);
+
+    nextStore = {
+      ...store,
+      reviewStates: upsertReviewState(store.reviewStates, applyFamiliarityRating(reviewState, rating)),
+      conceptFamiliarities: upsertConceptFamiliarity(store.conceptFamiliarities, {
+        conceptId: concept.id,
+        userId: store.users[0].id,
+        rating,
+        updatedAt: new Date().toISOString()
+      })
+    };
+    nextStore = refreshQuizSet(nextStore);
+  }
+
+  await saveStore(nextStore);
   return concept;
 }
 
@@ -294,7 +385,7 @@ export async function updateEdge(
 
 export async function getDueReviews(): Promise<DueConcept[]> {
   const store = await hydrateStore();
-  return listDueConcepts(store.concepts, store.reviewStates);
+  return listDueConceptsForStore(store);
 }
 
 export async function getReminderSettings() {
@@ -339,9 +430,7 @@ export async function generateQuizzes(conceptIds?: string[]): Promise<QuizItem[]
   const concepts =
     conceptIds && conceptIds.length
       ? store.concepts.filter((concept) => conceptIds.includes(concept.id))
-      : listDueConcepts(store.concepts, store.reviewStates)
-          .slice(0, 4)
-          .map((item) => item.concept);
+      : getDefaultQuizConcepts(store);
 
   const nextQuizItems = generateQuizItems(store.users[0].id, concepts, store.edges);
 
@@ -384,9 +473,7 @@ export async function submitQuizAttempt(input: {
     ensureReviewState(store.users[0].id, conceptId);
   const nextReviewState = updateReviewState(reviewState, result.outcome);
 
-  const nextReviewStates = store.reviewStates.some((item) => item.conceptId === conceptId)
-    ? store.reviewStates.map((item) => (item.conceptId === conceptId ? nextReviewState : item))
-    : [...store.reviewStates, nextReviewState];
+  const nextReviewStates = upsertReviewState(store.reviewStates, nextReviewState);
 
   if (concept) {
     const masteryShift = {

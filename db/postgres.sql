@@ -151,6 +151,18 @@ CREATE TABLE IF NOT EXISTS review_states (
 CREATE INDEX IF NOT EXISTS review_states_due_idx
   ON review_states (user_id, due_at);
 
+CREATE TABLE IF NOT EXISTS concept_familiarities (
+  user_id TEXT NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+  concept_id TEXT NOT NULL REFERENCES concepts(id) ON DELETE CASCADE,
+  rating INTEGER NOT NULL,
+  updated_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+  PRIMARY KEY (user_id, concept_id),
+  CHECK (rating >= 1 AND rating <= 5)
+);
+
+CREATE INDEX IF NOT EXISTS concept_familiarities_updated_idx
+  ON concept_familiarities (user_id, updated_at DESC);
+
 CREATE TABLE IF NOT EXISTS quiz_items (
   id TEXT PRIMARY KEY,
   user_id TEXT NOT NULL REFERENCES users(id) ON DELETE CASCADE,
