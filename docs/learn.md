@@ -237,6 +237,32 @@ When they are separated well:
 - Next.js Route Handlers: https://nextjs.org/docs/app/getting-started/route-handlers-and-middleware
 - PostgreSQL current documentation home: https://www.postgresql.org/docs/current/index.html
 
+## 6A. Planned UX Direction
+
+The current app is organized as separate workspaces:
+
+- Graph
+- Study
+- Quizzes
+- Ingest
+
+That is how the prototype is built today, but it is probably not the best learning experience for end users.
+
+The intended next direction is a guided flow:
+
+1. upload notes
+2. generate a mindmap
+3. rate familiarity per concept
+4. generate quizzes
+5. continue review
+
+Why this matters:
+
+- the user gets one obvious next action at each step
+- the mindmap becomes the first “success moment”
+- quizzes feel like a consequence of understanding the map, not a detached tool
+- the interface stops scattering actions across unrelated panels
+
 ## 7. Glossary
 
 ### Normalized schema
@@ -454,6 +480,33 @@ Once the concepts above make sense, the next useful topics are:
 - migrations and backward-compatible schema changes
 
 If you understand those, the next persistence refactor in this repo will make much more sense.
+
+## 10A. How Gemini Fits Into The Planned Architecture
+
+The intended next direction is to use Gemini as the primary semantic ingestion layer for uploaded notes.
+
+That means Gemini would be used for tasks like:
+
+- extracting concepts
+- summarizing concepts
+- identifying relationships
+- returning grounded evidence snippets
+
+It does not mean Gemini should replace the whole app.
+
+The app should still persist its own structured output afterward:
+
+- concepts
+- edges
+- evidence refs
+- review state inputs
+- quiz-ready data
+
+Why this matters:
+
+- Gemini can help understand notes
+- the app still needs its own stored evidence and graph state for later retrieval, review, and quiz generation
+- “Gemini helps build the graph” is different from “Gemini is the whole product”
 
 ## 11. What Real PDF Ingestion Would Require In This Repo
 

@@ -9,6 +9,14 @@ The current prototype focuses on four core loops:
 - schedule concept reviews with spaced repetition
 - generate quizzes to test whether the user actually understands the material
 
+The intended product direction is a guided flow rather than a set of separate workspaces:
+
+1. upload notes
+2. generate a mindmap
+3. rate familiarity per concept
+4. generate quizzes
+5. continue review
+
 ## What the App Does
 
 The app is built around the idea that learning should become a connected knowledge network instead of a pile of isolated notes.
@@ -22,6 +30,13 @@ In the current implementation, users can:
 - review due concepts from a spaced-repetition queue
 - answer mixed recall quiz prompts
 - store reminder settings for in-app and email review nudges
+
+Planned next UX direction:
+
+- make the mindmap the first success screen after ingestion
+- replace scattered workspace actions with one primary action per stage
+- add per-concept familiarity rating before quiz generation
+- move from heuristic ingestion toward Gemini-backed document understanding
 
 ## Current Product Areas
 
@@ -62,7 +77,9 @@ The current quiz types are:
 
 Users can create modules and add source content that gets chunked and processed into concepts and edges.
 
-The current prototype supports text ingestion. The architecture is designed so richer upload/parsing support can be added later.
+The current prototype supports text ingestion. The planned direction is Gemini-backed document understanding, where uploaded notes are processed into concepts, relationships, summaries, and evidence before the app persists the resulting graph.
+
+Today, the active implementation is still text-first and prototype-grade.
 
 ### 5. Reminder Settings
 
@@ -195,9 +212,10 @@ The bootstrap SQL for the current Postgres store lives in `db/postgres.sql`.
 
 The most important functional improvements from here are:
 
+- redesign the UI around a guided flow instead of separate workspaces
+- add Gemini-backed ingestion so uploaded notes can produce richer concept maps
+- add per-concept familiarity rating before quiz generation
 - split the normalized Postgres path into repository-style reads and writes instead of full-store rewrites
-- improve source ingestion beyond pasted text
-- replace heuristic concept extraction with real LLM-backed extraction
 - add robust background job handling for reminders and ingestion
 - tighten scoring and mastery evaluation logic
 

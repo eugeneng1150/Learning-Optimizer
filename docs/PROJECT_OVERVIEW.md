@@ -22,9 +22,21 @@ The desired outcome is:
 - users know what to revise next
 - users can test whether they truly understand a concept
 
+Near-term product direction:
+
+- the experience should become a guided flow, not a collection of separate workspaces
+- users should upload notes and land on a generated mindmap first
+- users should rate familiarity per concept before the quiz step
+- Gemini should become the primary semantic ingestion layer for uploaded notes
+
 ## What Exists Today
 
 The current repo contains a functional prototype with these implemented capabilities.
+
+Important distinction:
+
+- the current implementation is still a workspace-first prototype
+- the intended next UX is a guided post-login journey from upload to map to familiarity to quiz to review
 
 ### Ingestion
 
@@ -41,6 +53,12 @@ This is currently heuristic rather than model-backed.
 Important current limit:
 
 - the repo does not yet implement real PDF extraction; `kind: "pdf"` exists in the data model, but the active ingest path still assumes text content is already available
+
+Planned next direction:
+
+- uploaded notes should be sent through Gemini-backed semantic processing
+- Gemini should return structured concepts, relationships, summaries, and grounded evidence
+- the app should persist the resulting graph and review-ready data for later quiz and study flows
 
 ### Graph Generation
 
@@ -64,6 +82,10 @@ Current review state fields:
 - `lastReviewedAt`
 
 This is an FSRS-style approximation suitable for a prototype.
+
+Planned next direction:
+
+- add a user-specific familiarity rating per concept before or alongside review scheduling so the system can blend self-assessment with later quiz outcomes
 
 ### Quiz Generation
 
@@ -176,31 +198,42 @@ Important current limits:
 - text-first ingestion instead of full document ingestion
 - no auth or user isolation beyond the demo data model
 - no real background queue for scheduled jobs
+- the UI is still organized as separate workspaces with too many competing actions
 
 ## Recommended Next Build Steps
 
-### 1. Upgrade Persistence
+### 1. Redesign The Product Flow
 
-Split the normalized Postgres adapter into repository-style reads and writes so persistence stops depending on full-store rewrites.
+Restructure the UI around a clearer guided journey:
+
+- upload notes
+- inspect generated mindmap
+- rate familiarity
+- generate quizzes
+- continue review
 
 ### 2. Improve Ingestion
 
-Add robust file upload and parsing for richer inputs, especially a real PDF path:
+Add Gemini-backed semantic ingestion for uploaded notes:
 
-- accept raw PDF upload
-- extract text server-side
-- normalize noisy extracted text
-- feed the cleaned text into the existing chunking/concept extraction flow
+- accept richer note inputs
+- send uploaded note content through Gemini processing
+- persist structured concept, relationship, summary, and evidence output
+- keep the app grounded in persisted evidence after ingestion
 
-### 3. Introduce Model-Backed Extraction
+### 3. Add Familiarity-Guided Study
 
-Swap the current heuristic extraction with grounded LLM calls and a proper embedding store.
+Introduce a user-specific per-concept familiarity rating so study and quiz flows can reflect self-assessed confidence before later quiz outcomes refine the schedule.
 
-### 4. Add Production Reminder Delivery
+### 4. Upgrade Persistence
+
+Split the normalized Postgres adapter into repository-style reads and writes so persistence stops depending on full-store rewrites.
+
+### 5. Add Production Reminder Delivery
 
 Move from stored reminder jobs to actual scheduled sending through email and in-app notification infrastructure.
 
-### 5. Harden Evaluation
+### 6. Harden Evaluation
 
 Improve quiz grading and mastery updates so concept understanding is measured more reliably.
 

@@ -27,6 +27,14 @@ Verified recently:
 - `npm test`
 - `npm run build`
 
+The current product shell still reflects the older workspace-first prototype. The intended next direction is a guided post-login flow:
+
+1. upload notes
+2. generate a mindmap
+3. rate familiarity per concept
+4. generate quizzes
+5. continue review
+
 ## What Is Implemented
 
 ### Frontend
@@ -125,6 +133,26 @@ This is a real persistence upgrade, but the app orchestration layer has not yet 
 - the app layer still rewrites the full normalized store snapshot on save
 - there is no real queue/worker system yet
 - auth is still effectively demo-level
+- the UI is still workspace-heavy and visually cluttered compared with the intended guided journey
+
+## Planned Product Direction
+
+These are the product decisions currently preferred for upcoming work:
+
+- treat auth as a future wrapper only; design the main journey post-login
+- make the mindmap the first success screen after notes are processed
+- add a per-concept quick familiarity rating before quiz generation
+- use Gemini as the primary semantic ingestion layer for uploaded notes
+- replace scattered workspace actions with one clearer stage-based flow
+
+The intended user journey is:
+
+1. upload notes
+2. process notes with Gemini
+3. inspect the generated mindmap
+4. rate familiarity on concepts
+5. generate quizzes from that map
+6. continue review and reminders
 
 ## PDF Ingestion Context
 
@@ -167,11 +195,12 @@ Main follow-up files for a future PDF ingestion task:
 
 The next serious engineering step is:
 
-1. split normalized persistence into repository-style access instead of whole-store rewrites
-2. move app orchestration off the giant `AppStore` boundary in Postgres mode
-3. add focused Postgres verification tests for the normalized adapter
+1. redesign the shell into a guided flow instead of separate workspaces
+2. add Gemini-backed ingestion for uploaded notes and map generation
+3. add user-specific per-concept familiarity rating before quiz generation
+4. then split normalized persistence into repository-style access instead of whole-store rewrites
 
-This is the cleanest next move because the schema is now normalized, but the runtime still pays whole-store rewrite costs and keeps persistence concerns too centralized.
+This is the cleanest next move because the current UI and ingestion flow no longer match the intended product experience, and the persistence refactor will be easier to shape once the product flow is clearer.
 
 ## Active Parallelization Setup
 
@@ -192,7 +221,7 @@ Use a prompt like this:
 Read docs/HANDOFF.md, README.md, docs/PROJECT_OVERVIEW.md, and docs/AGENTS.md first.
 This repo is a Learning Optimizer app.
 Current state: build passes, reminder settings work, normalized Postgres tables exist, and bootstrap/import tooling exists.
-Next task: split the Postgres path into repository-style access and add focused persistence verification.
+Next task: redesign the app into a guided flow, add Gemini-backed ingestion, and introduce per-concept familiarity rating before quizzes.
 ```
 
 ## Maintenance Rule
