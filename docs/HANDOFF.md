@@ -7,7 +7,7 @@ If you are picking up work on this repo, read this file first, then read:
 - `README.md`
 - `docs/PROJECT_OVERVIEW.md`
 - `docs/AGENTS.md`
-- `docs/PARALLEL_POSTGRES_PLAN.md` if the active task is persistence follow-up work
+- `docs/PARALLEL_GUIDED_FLOW_PLAN.md` if the active task is being parallelized across multiple agents
 
 ## Project
 
@@ -202,16 +202,18 @@ The next serious engineering step is:
 
 This is the cleanest next move because the current UI and ingestion flow no longer match the intended product experience, and the persistence refactor will be easier to shape once the product flow is clearer.
 
-## Active Parallelization Setup
+## Parallelization Context
 
-The repo now has local task branches prepared for the Postgres normalization phase:
+The old Postgres normalization branch split has been completed and cleaned up locally.
 
-- `codex-db-schema`
-- `codex-repositories`
-- `codex-migration-bootstrap`
-- `codex-integration`
+If you want to run multiple agents for the current product work, use the updated branch/task split in `docs/PARALLEL_GUIDED_FLOW_PLAN.md`.
 
-The exact split for those branches is documented in `docs/PARALLEL_POSTGRES_PLAN.md`.
+That file now covers the guided-flow workstream:
+
+- `codex-guided-shell`
+- `codex-familiarity-flow`
+- `codex-gemini-ingestion`
+- `codex-guided-integration`
 
 ## How To Resume In A New Thread
 
