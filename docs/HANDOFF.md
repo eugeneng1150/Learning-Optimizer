@@ -120,10 +120,48 @@ This is a real persistence upgrade, but the app orchestration layer has not yet 
 
 - concept extraction is still heuristic
 - text ingestion is still basic
+- real PDF parsing is not implemented yet; current ingest UI only supports pasted text and browser-loaded `.txt` / `.md` content
 - persistence is only partially productionized
 - the app layer still rewrites the full normalized store snapshot on save
 - there is no real queue/worker system yet
 - auth is still effectively demo-level
+
+## PDF Ingestion Context
+
+The domain model already allows `SourceDocument.kind` to be `"pdf"`, but the repo does not yet have a real PDF extraction pipeline.
+
+Current reality:
+
+- `src/components/intake-panel.tsx` supports pasted text and browser-loaded `.txt` / `.md`
+- `src/app/api/sources/route.ts` expects text content, not raw PDF upload handling
+- `src/lib/services/ingestion.ts` starts from plain text and does chunking/concept extraction only after text already exists
+
+What a real v1 PDF path should do:
+
+1. accept a raw PDF file upload
+2. extract text from the PDF on the server
+3. lightly normalize the extracted text
+4. pass the cleaned text into the existing source ingestion flow
+
+Recommended architecture:
+
+- add a dedicated PDF parsing helper, likely under `src/lib/services/`
+- keep parsing/extraction separate from `src/lib/app.ts`
+- keep route handlers thin and let `app.ts` orchestrate upload -> extract -> create source -> ingest
+
+Recommended v1 scope:
+
+- text-based PDFs only
+- no OCR
+- no advanced layout reconstruction beyond light cleanup
+
+Main follow-up files for a future PDF ingestion task:
+
+- `src/components/intake-panel.tsx`
+- `src/app/api/sources/route.ts` or a dedicated PDF upload route
+- `src/lib/app.ts`
+- `src/lib/services/ingestion.ts`
+- likely a new `src/lib/services/pdf.ts`
 
 ## Recommended Next Task
 

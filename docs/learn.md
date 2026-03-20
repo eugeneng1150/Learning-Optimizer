@@ -454,3 +454,68 @@ Once the concepts above make sense, the next useful topics are:
 - migrations and backward-compatible schema changes
 
 If you understand those, the next persistence refactor in this repo will make much more sense.
+
+## 11. What Real PDF Ingestion Would Require In This Repo
+
+It is easy to assume this repo already supports PDFs because `SourceDocument.kind` includes `"pdf"`.
+
+That is not the same as having a real PDF ingestion pipeline.
+
+### Current Reality
+
+Right now the active ingest path still assumes plain text already exists.
+
+You can see that in:
+
+- `src/components/intake-panel.tsx`
+- `src/app/api/sources/route.ts`
+- `src/lib/services/ingestion.ts`
+
+The current UI supports:
+
+- pasted text
+- browser-loaded `.txt` / `.md`
+
+It does not yet support:
+
+- raw PDF upload
+- server-side PDF text extraction
+- OCR
+- PDF layout reconstruction
+
+### The Missing Pipeline
+
+To support real PDFs, the flow needs to become:
+
+1. PDF file upload
+2. text extraction
+3. text cleanup
+4. existing chunking and concept extraction
+
+That means the missing step is before the current ingestion service, not inside the current graph or quiz logic.
+
+### A Good v1 Architecture Here
+
+For this repo, the cleanest implementation would be:
+
+- route handler accepts the uploaded file
+- a dedicated PDF service extracts raw text
+- ingestion helpers normalize the text
+- `src/lib/app.ts` calls the existing source creation flow with cleaned text content
+
+In practice that likely means:
+
+- keep parsing in a dedicated `pdf` service
+- keep `src/lib/services/ingestion.ts` focused on text normalization, chunking, and concept extraction
+- keep `src/lib/app.ts` as the orchestration layer only
+
+### Reasonable v1 Scope
+
+If you build this later, keep the first version narrow:
+
+- text-based PDFs only
+- no OCR
+- light cleanup only
+- reuse the current text ingestion pipeline after extraction
+
+That gives you a realistic first milestone without trying to solve every PDF problem at once.

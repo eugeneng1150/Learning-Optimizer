@@ -38,6 +38,10 @@ The system can:
 
 This is currently heuristic rather than model-backed.
 
+Important current limit:
+
+- the repo does not yet implement real PDF extraction; `kind: "pdf"` exists in the data model, but the active ingest path still assumes text content is already available
+
 ### Graph Generation
 
 The graph layer can:
@@ -181,7 +185,12 @@ Split the normalized Postgres adapter into repository-style reads and writes so 
 
 ### 2. Improve Ingestion
 
-Add robust file upload and parsing for richer inputs, then connect that pipeline to better concept extraction.
+Add robust file upload and parsing for richer inputs, especially a real PDF path:
+
+- accept raw PDF upload
+- extract text server-side
+- normalize noisy extracted text
+- feed the cleaned text into the existing chunking/concept extraction flow
 
 ### 3. Introduce Model-Backed Extraction
 

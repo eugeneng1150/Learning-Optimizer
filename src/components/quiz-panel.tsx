@@ -15,12 +15,13 @@ export function QuizPanel({ quizzes, onRefresh, onGenerateQuiz }: QuizPanelProps
   const [answer, setAnswer] = useState("");
   const [feedback, setFeedback] = useState<string | null>(null);
   const [isPending, startTransition] = useTransition();
+  const quizSetKey = quizzes.map((item) => item.id).join("|");
 
   useEffect(() => {
     setIndex(0);
     setAnswer("");
     setFeedback(null);
-  }, [quizzes]);
+  }, [quizSetKey]);
 
   const quiz = quizzes[index];
 

@@ -91,6 +91,11 @@ function ensureReviewStates(
   return nextStates;
 }
 
+function reconcileQuizAttempts(quizItems: QuizItem[], quizAttempts: QuizAttempt[]): QuizAttempt[] {
+  const validQuizItemIds = new Set(quizItems.map((item) => item.id));
+  return quizAttempts.filter((attempt) => validQuizItemIds.has(attempt.quizItemId));
+}
+
 export async function getDashboardSnapshot(): Promise<DashboardSnapshot> {
   const store = await hydrateStore();
   const due = listDueConcepts(store.concepts, store.reviewStates);
@@ -99,7 +104,8 @@ export async function getDashboardSnapshot(): Promise<DashboardSnapshot> {
   if (!store.quizItems.length && quizzes.length) {
     await saveStore({
       ...store,
-      quizItems: quizzes
+      quizItems: quizzes,
+      quizAttempts: reconcileQuizAttempts(quizzes, store.quizAttempts)
     });
   }
 
@@ -182,6 +188,7 @@ export async function createSource(input: {
   );
 
   nextStore.quizItems = generateQuizItems(store.users[0].id, nextStore.concepts, nextStore.edges);
+  nextStore.quizAttempts = reconcileQuizAttempts(nextStore.quizItems, nextStore.quizAttempts);
   nextStore.reminders = [
     ...nextStore.reminders,
     ...buildReminderJobs(
@@ -340,7 +347,8 @@ export async function generateQuizzes(conceptIds?: string[]): Promise<QuizItem[]
 
   await saveStore({
     ...store,
-    quizItems: nextQuizItems
+    quizItems: nextQuizItems,
+    quizAttempts: reconcileQuizAttempts(nextQuizItems, store.quizAttempts)
   });
 
   return nextQuizItems;
