@@ -7,9 +7,10 @@ import { ModuleRecord } from "@/lib/types";
 interface IntakePanelProps {
   modules: ModuleRecord[];
   onMutate: () => Promise<void>;
+  onSourceCreated?: () => void;
 }
 
-export function IntakePanel({ modules, onMutate }: IntakePanelProps) {
+export function IntakePanel({ modules, onMutate, onSourceCreated }: IntakePanelProps) {
   const [isPending, startTransition] = useTransition();
   const fileInputRef = useRef<HTMLInputElement | null>(null);
   const [moduleTitle, setModuleTitle] = useState("");
@@ -48,11 +49,13 @@ export function IntakePanel({ modules, onMutate }: IntakePanelProps) {
         return;
       }
 
+      const moduleRecord = (await response.json()) as ModuleRecord;
       setModuleTitle("");
       setModuleCode("");
       setModuleDescription("");
       await onMutate();
-      setMessage("Module created.");
+      setSelectedModuleId(moduleRecord.id);
+      setMessage("Subject created. Upload notes to generate the map.");
     });
   }
 
@@ -84,7 +87,8 @@ export function IntakePanel({ modules, onMutate }: IntakePanelProps) {
         fileInputRef.current.value = "";
       }
       await onMutate();
-      setMessage("Source ingested and graph refreshed.");
+      onSourceCreated?.();
+      setMessage("Notes processed. The mindmap is ready.");
     });
   }
 
@@ -119,8 +123,8 @@ export function IntakePanel({ modules, onMutate }: IntakePanelProps) {
       <section className="panel">
         <div className="panel-header">
           <div>
-            <p className="eyebrow">Ingestion</p>
-            <h2>Create module</h2>
+            <p className="eyebrow">Stage 1</p>
+            <h2>Start with a subject</h2>
           </div>
         </div>
 
@@ -143,7 +147,7 @@ export function IntakePanel({ modules, onMutate }: IntakePanelProps) {
             />
           </label>
           <button className="action-button" type="submit" disabled={isPending}>
-            {isPending ? "Saving..." : "Add module"}
+            {isPending ? "Saving..." : "Create subject"}
           </button>
         </form>
       </section>
@@ -151,8 +155,8 @@ export function IntakePanel({ modules, onMutate }: IntakePanelProps) {
       <section className="panel">
         <div className="panel-header">
           <div>
-            <p className="eyebrow">Source upload</p>
-            <h2>Add notes by paste or file</h2>
+            <p className="eyebrow">Stage 1</p>
+            <h2>Upload notes</h2>
           </div>
         </div>
 
@@ -235,7 +239,7 @@ export function IntakePanel({ modules, onMutate }: IntakePanelProps) {
             <p className="muted">No file selected yet.</p>
           ) : null}
           <button className="action-button" type="submit" disabled={isPending || !modules.length}>
-            {isPending ? "Ingesting..." : "Ingest source"}
+            {isPending ? "Processing..." : "Process notes"}
           </button>
         </form>
 

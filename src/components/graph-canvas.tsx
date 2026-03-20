@@ -35,8 +35,8 @@ export function GraphCanvas({
     <div className="panel graph-panel">
       <div className="panel-header">
         <div>
-          <p className="eyebrow">Graph explorer</p>
-          <h2>AI concept network</h2>
+          <p className="eyebrow">Stage 2</p>
+          <h2>Generated mindmap</h2>
         </div>
         <span className="panel-badge">{safeNodes.length} nodes</span>
       </div>
@@ -106,8 +106,8 @@ export function GraphCanvas({
       </svg>
 
       <p className="graph-caption">
-        Edges are evidence-backed links such as similarity, prerequisites, and applications. Click a node to inspect
-        sources, mastery, and review timing.
+        This is the first success screen after processing. Click a concept to inspect evidence, edit the summary, and
+        confirm the structure before moving into familiarity and quizzes.
       </p>
     </div>
   );
