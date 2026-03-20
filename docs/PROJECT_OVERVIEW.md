@@ -110,13 +110,20 @@ This file defines the shared data structures used by the UI, APIs, and service l
 
 - `src/lib/store.ts`
 - `src/lib/postgres-store.ts`
+- `src/lib/bootstrap-store.ts`
+- `scripts/bootstrap-postgres.ts`
+- `scripts/import-local-store.ts`
 
 The repo now supports two persistence modes behind the same store interface:
 
 - local JSON persistence under `.data/`
 - PostgreSQL persistence when `DATABASE_URL` is set
 
-The current Postgres adapter stores the app state through a single durable database record so the app can move off local files immediately without forcing a full relational rewrite first.
+The current Postgres adapter writes the app state into normalized relational tables defined in `db/postgres.sql`.
+
+The app layer still uses the existing `AppStore` contract, so the adapter currently translates between the in-memory store shape and the normalized tables.
+
+Bootstrap/import tooling now exists to move a local `.data/store.json` snapshot into that normalized schema.
 
 ### Service Layer
 
@@ -160,7 +167,7 @@ This is still a functional prototype, not a production system.
 
 Important current limits:
 
-- the Postgres path is still snapshot-oriented rather than fully normalized
+- the Postgres path still rewrites a whole normalized store rather than using narrower repositories
 - heuristic extraction instead of LLM-backed extraction
 - text-first ingestion instead of full document ingestion
 - no auth or user isolation beyond the demo data model
@@ -170,7 +177,7 @@ Important current limits:
 
 ### 1. Upgrade Persistence
 
-Replace the local JSON store with a real database and keep the current service boundaries intact.
+Split the normalized Postgres adapter into repository-style reads and writes so persistence stops depending on full-store rewrites.
 
 ### 2. Improve Ingestion
 
