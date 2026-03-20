@@ -1,6 +1,5 @@
 import { createId, getStore, saveStore } from "@/lib/store";
-import { buildEdges, computeModuleSimilarity, mergeConcepts, toConceptNode } from "@/lib/services/graph";
-import { chunkText, extractCandidateConcepts } from "@/lib/services/ingestion";
+import { computeModuleSimilarity, toConceptNode } from "@/lib/services/graph";
 import { generateQuizItems, scoreAnswer } from "@/lib/services/quiz";
 import {
   applyFamiliarityRating,
@@ -9,6 +8,7 @@ import {
   listDueConcepts,
   updateReviewState
 } from "@/lib/services/review";
+import { ingestSourceDocument, SourceProcessorPreference } from "@/lib/services/source-ingestion";
 import {
   AppStore,
   ConceptEdge,
@@ -61,25 +61,34 @@ async function hydrateStore(): Promise<AppStore> {
       continue;
     }
 
-    nextStore = ingestIntoStore(nextStore, moduleRecord, source);
+    nextStore = await ingestIntoStore(nextStore, moduleRecord, source, "heuristic");
   }
 
   await saveStore(nextStore);
   return nextStore;
 }
 
-function ingestIntoStore(store: AppStore, moduleRecord: ModuleRecord, source: SourceDocument): AppStore {
-  const chunks = chunkText(source);
-  const extractedConcepts = extractCandidateConcepts(chunks, moduleRecord);
-  const concepts = mergeConcepts(store.concepts, extractedConcepts);
-  const edges = buildEdges(concepts, [...store.chunks, ...chunks], store.edges);
-  const reviewStates = ensureReviewStates(store.reviewStates, concepts, moduleRecord.userId);
+async function ingestIntoStore(
+  store: AppStore,
+  moduleRecord: ModuleRecord,
+  source: SourceDocument,
+  preferredProcessor: SourceProcessorPreference = "auto"
+): Promise<AppStore> {
+  const ingestion = await ingestSourceDocument({
+    storeChunks: store.chunks,
+    storeConcepts: store.concepts,
+    storeEdges: store.edges,
+    source,
+    moduleRecord,
+    preferredProcessor
+  });
+  const reviewStates = ensureReviewStates(store.reviewStates, ingestion.concepts, moduleRecord.userId);
 
   return {
     ...store,
-    chunks: [...store.chunks, ...chunks],
-    concepts,
-    edges,
+    chunks: [...store.chunks, ...ingestion.chunks],
+    concepts: ingestion.concepts,
+    edges: ingestion.edges,
     reviewStates
   };
 }
@@ -226,6 +235,7 @@ export async function createSource(input: {
   title: string;
   content: string;
   kind?: "pdf" | "text";
+  processor?: SourceProcessorPreference;
 }): Promise<SourceDocument> {
   const store = await hydrateStore();
   const moduleRecord = store.modules.find((item) => item.id === input.moduleId);
@@ -244,13 +254,14 @@ export async function createSource(input: {
     createdAt: new Date().toISOString()
   };
 
-  const nextStore = ingestIntoStore(
+  const nextStore = await ingestIntoStore(
     {
       ...store,
       sources: [...store.sources, source]
     },
     moduleRecord,
-    source
+    source,
+    input.processor ?? "auto"
   );
 
   const refreshedStore = refreshQuizSet(nextStore);

@@ -12,6 +12,7 @@ export async function POST(request: Request) {
     title?: string;
     content?: string;
     kind?: "pdf" | "text";
+    processor?: "auto" | "gemini" | "heuristic";
   };
 
   if (!body.moduleId?.trim() || !body.title?.trim() || !body.content?.trim()) {
@@ -23,7 +24,8 @@ export async function POST(request: Request) {
       moduleId: body.moduleId,
       title: body.title,
       content: body.content,
-      kind: body.kind
+      kind: body.kind,
+      processor: body.processor
     });
 
     return ok(source, 201);
