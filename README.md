@@ -139,6 +139,18 @@ Run tests:
 npm test
 ```
 
+Bootstrap the normalized Postgres schema:
+
+```bash
+npm run db:bootstrap
+```
+
+Import the current local JSON store into Postgres:
+
+```bash
+npm run db:import-local
+```
+
 ## Current Persistence Model
 
 This repo currently uses a local file-backed store under `.data/` for fast prototyping.
@@ -154,14 +166,28 @@ There is now also a PostgreSQL adapter behind the same store interface.
 ### Persistence Modes
 
 - no `DATABASE_URL`: app uses the local JSON store under `.data/store.json`
-- with `DATABASE_URL`: app persists the app state to PostgreSQL
+- with `DATABASE_URL`: app persists the app state to normalized PostgreSQL tables
+### Postgres Bootstrap And Import
+
+The Postgres path now writes the app state into normalized tables defined in `db/postgres.sql`.
+
+The app layer still uses the existing `AppStore` contract, and the Postgres adapter maps that store shape into the normalized tables.
 
 To use PostgreSQL:
 
 1. Create a database
 2. Copy `.env.example` to `.env.local`
 3. Set `DATABASE_URL`
-4. Start the app normally with `npm run dev`
+4. Run `npm run db:bootstrap`
+5. If you already have local `.data/store.json` data, run `npm run db:import-local`
+6. Start the app normally with `npm run dev`
+
+If your local prototype data lives somewhere other than `.data/store.json`, either:
+
+- set `LEARNING_OPTIMIZER_DATA_DIR`
+- or run `npm run db:import-local -- --from /absolute/path/to/store.json`
+
+If a legacy Postgres `app_state` snapshot table is still present, the runtime adapter can import that snapshot into the normalized tables on first Postgres load.
 
 The bootstrap SQL for the current Postgres store lives in `db/postgres.sql`.
 
@@ -169,7 +195,7 @@ The bootstrap SQL for the current Postgres store lives in `db/postgres.sql`.
 
 The most important functional improvements from here are:
 
-- move from local JSON persistence to a proper database
+- split the normalized Postgres path into repository-style reads and writes instead of full-store rewrites
 - improve source ingestion beyond pasted text
 - replace heuristic concept extraction with real LLM-backed extraction
 - add robust background job handling for reminders and ingestion
@@ -183,3 +209,4 @@ Additional documentation:
 
 - [docs/PROJECT_OVERVIEW.md](docs/PROJECT_OVERVIEW.md)
 - [docs/AGENTS.md](docs/AGENTS.md)
+- [docs/PARALLEL_POSTGRES_PLAN.md](docs/PARALLEL_POSTGRES_PLAN.md)

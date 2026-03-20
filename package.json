@@ -6,7 +6,9 @@
     "dev": "next dev",
     "build": "next build",
     "start": "next start",
-    "test": "tsx --test src/tests/**/*.test.ts"
+    "test": "tsx --test src/tests/**/*.test.ts",
+    "db:bootstrap": "tsx scripts/bootstrap-postgres.ts",
+    "db:import-local": "tsx scripts/import-local-store.ts"
   },
   "dependencies": {
     "next": "15.3.1",

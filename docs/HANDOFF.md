@@ -7,7 +7,7 @@ If you are picking up work on this repo, read this file first, then read:
 - `README.md`
 - `docs/PROJECT_OVERVIEW.md`
 - `docs/AGENTS.md`
-- `docs/PARALLEL_POSTGRES_PLAN.md` if the active task is Postgres normalization
+- `docs/PARALLEL_POSTGRES_PLAN.md` if the active task is persistence follow-up work
 
 ## Project
 
@@ -77,9 +77,11 @@ The app now supports two store modes behind the same interface in `src/lib/store
 
 - used when `DATABASE_URL` is set
 - persists app state through `src/lib/postgres-store.ts`
-- current implementation stores the app state as a durable snapshot record in Postgres
+- current implementation stores app data in normalized Postgres tables
+- bootstrap/import tooling exists for moving `.data/store.json` into Postgres
+- the app layer still uses the existing whole-store contract over that normalized schema
 
-This is a real persistence upgrade, but it is not yet a normalized relational schema.
+This is a real persistence upgrade, but the app orchestration layer has not yet been split into repository-style persistence access.
 
 ## Important Files
 
@@ -94,7 +96,10 @@ This is a real persistence upgrade, but it is not yet a normalized relational sc
 - `src/lib/store.ts`
 - `src/lib/store-utils.ts`
 - `src/lib/postgres-store.ts`
+- `src/lib/bootstrap-store.ts`
 - `db/postgres.sql`
+- `scripts/bootstrap-postgres.ts`
+- `scripts/import-local-store.ts`
 
 ### Product Logic
 
@@ -116,7 +121,7 @@ This is a real persistence upgrade, but it is not yet a normalized relational sc
 - concept extraction is still heuristic
 - text ingestion is still basic
 - persistence is only partially productionized
-- there is no normalized Postgres schema yet
+- the app layer still rewrites the full normalized store snapshot on save
 - there is no real queue/worker system yet
 - auth is still effectively demo-level
 
@@ -124,11 +129,11 @@ This is a real persistence upgrade, but it is not yet a normalized relational sc
 
 The next serious engineering step is:
 
-1. normalize the Postgres storage model
-2. split persistence into repository-style access instead of one app-state snapshot
-3. move modules, sources, concepts, edges, review states, quiz items, and reminder settings into first-class tables
+1. split normalized persistence into repository-style access instead of whole-store rewrites
+2. move app orchestration off the giant `AppStore` boundary in Postgres mode
+3. add focused Postgres verification tests for the normalized adapter
 
-This is the cleanest next move because nearly every later feature depends on reliable structured persistence.
+This is the cleanest next move because the schema is now normalized, but the runtime still pays whole-store rewrite costs and keeps persistence concerns too centralized.
 
 ## Active Parallelization Setup
 
@@ -148,8 +153,8 @@ Use a prompt like this:
 ```text
 Read docs/HANDOFF.md, README.md, docs/PROJECT_OVERVIEW.md, and docs/AGENTS.md first.
 This repo is a Learning Optimizer app.
-Current state: build passes, reminder settings work, Postgres snapshot adapter exists.
-Next task: normalize the Postgres schema and split the store into repositories.
+Current state: build passes, reminder settings work, normalized Postgres tables exist, and bootstrap/import tooling exists.
+Next task: split the Postgres path into repository-style access and add focused persistence verification.
 ```
 
 ## Maintenance Rule
