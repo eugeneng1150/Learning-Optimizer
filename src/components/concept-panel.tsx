@@ -2,19 +2,29 @@
 
 import { FormEvent, useEffect, useState, useTransition } from "react";
 
-import { ConceptEdgeRecord, ConceptRecord, ModuleRecord } from "@/lib/types";
+import { ConceptEdgeRecord, ConceptRecord, FamiliarityRating, ModuleRecord } from "@/lib/types";
 
 interface ConceptPanelProps {
   concept?: ConceptRecord;
+  familiarityRating?: FamiliarityRating;
   modules: ModuleRecord[];
   relatedEdges: ConceptEdgeRecord[];
   onMutate: () => Promise<void>;
 }
 
-export function ConceptPanel({ concept, modules, relatedEdges, onMutate }: ConceptPanelProps) {
+const familiarityOptions: Array<{ value: FamiliarityRating; label: string }> = [
+  { value: 1, label: "1 - New" },
+  { value: 2, label: "2 - Rough" },
+  { value: 3, label: "3 - Partial" },
+  { value: 4, label: "4 - Solid" },
+  { value: 5, label: "5 - Fluent" }
+];
+
+export function ConceptPanel({ concept, familiarityRating, modules, relatedEdges, onMutate }: ConceptPanelProps) {
   const [title, setTitle] = useState(concept?.title ?? "");
   const [summary, setSummary] = useState(concept?.summary ?? "");
   const [status, setStatus] = useState<ConceptRecord["status"]>(concept?.status ?? "active");
+  const [familiarity, setFamiliarity] = useState<FamiliarityRating | "">(familiarityRating ?? "");
   const [isPending, startTransition] = useTransition();
   const [similarModules, setSimilarModules] = useState<Array<{ moduleId: string; title: string; score: number; reasons: string[] }>>([]);
 
@@ -22,7 +32,8 @@ export function ConceptPanel({ concept, modules, relatedEdges, onMutate }: Conce
     setTitle(concept?.title ?? "");
     setSummary(concept?.summary ?? "");
     setStatus(concept?.status ?? "active");
-  }, [concept]);
+    setFamiliarity(familiarityRating ?? "");
+  }, [concept, familiarityRating]);
 
   useEffect(() => {
     async function loadSimilarity() {
@@ -73,7 +84,8 @@ export function ConceptPanel({ concept, modules, relatedEdges, onMutate }: Conce
         body: JSON.stringify({
           title,
           summary,
-          status
+          status,
+          familiarityRating: familiarity || undefined
         })
       });
 
@@ -119,6 +131,23 @@ export function ConceptPanel({ concept, modules, relatedEdges, onMutate }: Conce
             <option value="confusing">confusing</option>
             <option value="mastered">mastered</option>
           </select>
+        </label>
+        <label className="full-width">
+          Familiarity
+          <select
+            value={familiarity}
+            onChange={(event) =>
+              setFamiliarity(event.target.value ? (Number(event.target.value) as FamiliarityRating) : "")
+            }
+          >
+            <option value="">Rate this concept</option>
+            {familiarityOptions.map((option) => (
+              <option key={option.value} value={option.value}>
+                {option.label}
+              </option>
+            ))}
+          </select>
+          <small>Lower ratings stay closer to the review queue. Higher ratings push review and default quizzes later.</small>
         </label>
         <button className="action-button" type="submit" disabled={isPending}>
           {isPending ? "Saving..." : "Save concept"}

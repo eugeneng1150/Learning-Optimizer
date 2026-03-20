@@ -1,7 +1,9 @@
 import { createId } from "@/lib/store";
 import {
   ConceptRecord,
+  ConceptFamiliarityRecord,
   DueConcept,
+  FamiliarityRating,
   QuizOutcome,
   ReminderJob,
   ReminderSettings,
@@ -20,6 +22,30 @@ export function ensureReviewState(userId: string, conceptId: string): ReviewStat
     difficulty: 5.5,
     retrievability: 0.82,
     dueAt: now().toISOString()
+  };
+}
+
+const familiarityProfiles: Record<
+  FamiliarityRating,
+  { stability: number; difficulty: number; retrievability: number; hoursUntilDue: number }
+> = {
+  1: { stability: 0.8, difficulty: 8.8, retrievability: 0.22, hoursUntilDue: 0 },
+  2: { stability: 1.1, difficulty: 7.2, retrievability: 0.34, hoursUntilDue: 12 },
+  3: { stability: 1.8, difficulty: 5.6, retrievability: 0.5, hoursUntilDue: 48 },
+  4: { stability: 2.8, difficulty: 4.2, retrievability: 0.68, hoursUntilDue: 120 },
+  5: { stability: 4.2, difficulty: 3.1, retrievability: 0.84, hoursUntilDue: 240 }
+};
+
+export function applyFamiliarityRating(state: ReviewState, rating: FamiliarityRating): ReviewState {
+  const profile = familiarityProfiles[rating];
+  const ratedAt = now();
+
+  return {
+    ...state,
+    stability: profile.stability,
+    difficulty: profile.difficulty,
+    retrievability: profile.retrievability,
+    dueAt: new Date(ratedAt.getTime() + profile.hoursUntilDue * 60 * 60 * 1000).toISOString()
   };
 }
 
@@ -49,17 +75,42 @@ export function updateReviewState(state: ReviewState, outcome: QuizOutcome): Rev
   };
 }
 
-export function listDueConcepts(concepts: ConceptRecord[], reviewStates: ReviewState[]): DueConcept[] {
+export function listDueConcepts(
+  concepts: ConceptRecord[],
+  reviewStates: ReviewState[],
+  conceptFamiliarities: ConceptFamiliarityRecord[] = []
+): DueConcept[] {
   const currentTime = now().toISOString();
+  const familiarityByConceptId = new Map(conceptFamiliarities.map((record) => [record.conceptId, record]));
+  const dueConcepts: DueConcept[] = [];
 
-  return concepts
-    .map((concept) => {
-      const reviewState = reviewStates.find((state) => state.conceptId === concept.id);
-      return reviewState ? { concept, reviewState } : null;
-    })
-    .filter((item): item is DueConcept => Boolean(item))
-    .filter((item) => item.reviewState.dueAt <= currentTime)
-    .sort((left, right) => left.reviewState.dueAt.localeCompare(right.reviewState.dueAt));
+  concepts.forEach((concept) => {
+    const reviewState = reviewStates.find((state) => state.conceptId === concept.id);
+    if (!reviewState || reviewState.dueAt > currentTime) {
+      return;
+    }
+
+    dueConcepts.push({
+      concept,
+      reviewState,
+      familiarity: familiarityByConceptId.get(concept.id)
+    });
+  });
+
+  return dueConcepts.sort((left, right) => {
+      const dueSort = left.reviewState.dueAt.localeCompare(right.reviewState.dueAt);
+      if (dueSort !== 0) {
+        return dueSort;
+      }
+
+      const leftRating = left.familiarity?.rating ?? 0;
+      const rightRating = right.familiarity?.rating ?? 0;
+      if (leftRating !== rightRating) {
+        return leftRating - rightRating;
+      }
+
+      return left.concept.title.localeCompare(right.concept.title);
+    });
 }
 
 export function buildReminderJobs(

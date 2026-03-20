@@ -10,6 +10,7 @@ export async function PATCH(
     summary?: string;
     status?: "active" | "confusing" | "mastered";
     pinned?: boolean;
+    familiarityRating?: 1 | 2 | 3 | 4 | 5;
     mergeWithId?: string;
   };
 

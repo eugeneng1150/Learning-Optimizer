@@ -30,6 +30,7 @@ export function StudyQueue({ due, onGenerateQuiz }: StudyQueueProps) {
                 <strong>{item.concept.title}</strong>
                 <p>{item.concept.summary}</p>
                 <small>
+                  Familiarity {item.familiarity?.rating ?? "unrated"} ·{" "}
                   Stability {item.reviewState.stability} · Difficulty {item.reviewState.difficulty} · Due{" "}
                   {new Date(item.reviewState.dueAt).toLocaleString()}
                 </small>

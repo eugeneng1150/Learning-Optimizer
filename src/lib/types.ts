@@ -9,6 +9,8 @@ export type QuizType = "flashcard" | "short_answer" | "relationship";
 
 export type QuizOutcome = "again" | "hard" | "good" | "easy";
 
+export type FamiliarityRating = 1 | 2 | 3 | 4 | 5;
+
 export interface User {
   id: string;
   name: string;
@@ -91,6 +93,13 @@ export interface ReviewState {
   lastReviewedAt?: string;
 }
 
+export interface ConceptFamiliarityRecord {
+  conceptId: string;
+  userId: string;
+  rating: FamiliarityRating;
+  updatedAt: string;
+}
+
 export interface QuizItem {
   id: string;
   userId: string;
@@ -138,6 +147,7 @@ export interface AppStore {
   concepts: ConceptRecord[];
   edges: ConceptEdgeRecord[];
   reviewStates: ReviewState[];
+  conceptFamiliarities: ConceptFamiliarityRecord[];
   quizItems: QuizItem[];
   quizAttempts: QuizAttempt[];
   reminders: ReminderJob[];
@@ -165,4 +175,5 @@ export interface ConceptEdge {
 export interface DueConcept {
   concept: ConceptRecord;
   reviewState: ReviewState;
+  familiarity?: ConceptFamiliarityRecord;
 }
