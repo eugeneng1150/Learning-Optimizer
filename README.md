@@ -80,6 +80,7 @@ The current settings model supports:
 - React
 - TypeScript
 - Local JSON-backed persistence for prototype state
+- Optional PostgreSQL-backed persistence via `DATABASE_URL`
 - Node-based service layer for ingestion, graphing, review scheduling, quizzes, and reminders
 
 ## Project Structure
@@ -148,6 +149,22 @@ That means:
 - it is not yet production-grade storage
 - the service boundaries are already separated enough to swap in a database later
 
+There is now also a PostgreSQL adapter behind the same store interface.
+
+### Persistence Modes
+
+- no `DATABASE_URL`: app uses the local JSON store under `.data/store.json`
+- with `DATABASE_URL`: app persists the app state to PostgreSQL
+
+To use PostgreSQL:
+
+1. Create a database
+2. Copy `.env.example` to `.env.local`
+3. Set `DATABASE_URL`
+4. Start the app normally with `npm run dev`
+
+The bootstrap SQL for the current Postgres store lives in `db/postgres.sql`.
+
 ## Near-Term Next Steps
 
 The most important functional improvements from here are:
@@ -160,4 +177,9 @@ The most important functional improvements from here are:
 
 ## Documentation
 
-More detailed product and architecture notes live in [docs/PROJECT_OVERVIEW.md](docs/PROJECT_OVERVIEW.md).
+Start with [docs/HANDOFF.md](docs/HANDOFF.md) if you are resuming work in a new thread or handing the repo to another agent.
+
+Additional documentation:
+
+- [docs/PROJECT_OVERVIEW.md](docs/PROJECT_OVERVIEW.md)
+- [docs/AGENTS.md](docs/AGENTS.md)

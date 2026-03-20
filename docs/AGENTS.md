@@ -1,5 +1,7 @@
 # Agent Workstreams
 
+Before assigning work, read `docs/HANDOFF.md` first so agents start from the latest repo state.
+
 This document defines the recommended sub-agent structure for the Learning Optimizer repo.
 
 The point is not to record which agent happened to do what in the past. The point is to define stable ownership boundaries so multiple agents can work in parallel without repeatedly colliding in the same files.

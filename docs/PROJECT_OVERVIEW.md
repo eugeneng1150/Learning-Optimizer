@@ -1,5 +1,7 @@
 # Learning Optimizer Project Overview
 
+For the fastest repo re-entry point, read `docs/HANDOFF.md` first.
+
 ## Purpose
 
 Learning Optimizer is a study system that tries to connect three things that are usually separate:
@@ -107,8 +109,14 @@ This file defines the shared data structures used by the UI, APIs, and service l
 ### Persistence
 
 - `src/lib/store.ts`
+- `src/lib/postgres-store.ts`
 
-This is the current local persistence adapter. It uses JSON files under `.data/` so the app can run without external services.
+The repo now supports two persistence modes behind the same store interface:
+
+- local JSON persistence under `.data/`
+- PostgreSQL persistence when `DATABASE_URL` is set
+
+The current Postgres adapter stores the app state through a single durable database record so the app can move off local files immediately without forcing a full relational rewrite first.
 
 ### Service Layer
 
@@ -152,7 +160,7 @@ This is still a functional prototype, not a production system.
 
 Important current limits:
 
-- local JSON persistence instead of a real database
+- the Postgres path is still snapshot-oriented rather than fully normalized
 - heuristic extraction instead of LLM-backed extraction
 - text-first ingestion instead of full document ingestion
 - no auth or user isolation beyond the demo data model

@@ -2,29 +2,14 @@ import { mkdir, readFile, writeFile } from "node:fs/promises";
 import path from "node:path";
 
 import { seedStore } from "@/lib/seed";
+import { loadStoreFromPostgres, saveStoreToPostgres } from "@/lib/postgres-store";
+import { cloneStore, normalizeStore } from "@/lib/store-utils";
 import { AppStore } from "@/lib/types";
 
 let inMemoryStore: AppStore | null = null;
 
-const cloneStore = (store: AppStore): AppStore =>
-  JSON.parse(JSON.stringify(store)) as AppStore;
-
-function normalizeStore(store: Partial<AppStore>): AppStore {
-  const seeded = seedStore();
-
-  return {
-    users: store.users ?? seeded.users,
-    modules: store.modules ?? seeded.modules,
-    sources: store.sources ?? seeded.sources,
-    chunks: store.chunks ?? seeded.chunks,
-    concepts: store.concepts ?? seeded.concepts,
-    edges: store.edges ?? seeded.edges,
-    reviewStates: store.reviewStates ?? seeded.reviewStates,
-    quizItems: store.quizItems ?? seeded.quizItems,
-    quizAttempts: store.quizAttempts ?? seeded.quizAttempts,
-    reminders: store.reminders ?? seeded.reminders,
-    reminderSettings: store.reminderSettings ?? seeded.reminderSettings
-  };
+function shouldUsePostgres(): boolean {
+  return Boolean(process.env.DATABASE_URL);
 }
 
 function getDataPaths() {
@@ -48,6 +33,10 @@ async function ensureStoreFile(): Promise<void> {
 }
 
 export async function getStore(): Promise<AppStore> {
+  if (shouldUsePostgres()) {
+    return loadStoreFromPostgres();
+  }
+
   if (inMemoryStore) {
     return cloneStore(inMemoryStore);
   }
@@ -61,6 +50,10 @@ export async function getStore(): Promise<AppStore> {
 }
 
 export async function saveStore(store: AppStore): Promise<AppStore> {
+  if (shouldUsePostgres()) {
+    return saveStoreToPostgres(store);
+  }
+
   inMemoryStore = cloneStore(store);
   await ensureStoreFile();
   const { dataFile } = getDataPaths();
