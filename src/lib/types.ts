@@ -36,6 +36,19 @@ export interface SourceDocument {
   createdAt: string;
 }
 
+export type SourceProcessorKind = "gemini" | "heuristic";
+
+export interface SourceProcessingSummary {
+  processor: SourceProcessorKind;
+  fallbackReason?: string;
+  conceptCount: number;
+  edgeCount: number;
+}
+
+export interface SourceCreationResult extends SourceProcessingSummary {
+  source: SourceDocument;
+}
+
 export interface ChunkRecord {
   id: string;
   sourceId: string;

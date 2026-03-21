@@ -349,6 +349,28 @@ select {
   margin-top: 18px;
 }
 
+.status-summary-card {
+  display: grid;
+  gap: 10px;
+  margin-top: 18px;
+  padding: 16px 18px;
+  border-radius: 18px;
+  background: var(--panel-soft);
+  border: 1px solid rgba(255, 255, 255, 0.05);
+}
+
+.status-summary-header {
+  display: flex;
+  flex-wrap: wrap;
+  justify-content: space-between;
+  gap: 12px;
+  align-items: center;
+}
+
+.status-summary-card p {
+  margin: 0;
+}
+
 .panel-header {
   display: flex;
   justify-content: space-between;

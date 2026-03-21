@@ -10,6 +10,7 @@ import { StudyQueue } from "@/components/study-queue";
 import { QuizPanel } from "@/components/quiz-panel";
 import { ReminderPanel } from "@/components/reminder-panel";
 import { FamiliarityStage } from "@/components/familiarity-stage";
+import { SourceCreationResult } from "@/lib/types";
 
 interface DashboardShellProps {
   initialSnapshot: DashboardSnapshot;
@@ -62,6 +63,7 @@ export function DashboardShell({ initialSnapshot }: DashboardShellProps) {
   const [lastAction, setLastAction] = useState<string | null>(
     initialSnapshot.graph.nodes.length ? "Notes are already processed. Start from the mindmap." : null
   );
+  const [lastIngestionResult, setLastIngestionResult] = useState<SourceCreationResult | null>(null);
   const [ratedConceptIds, setRatedConceptIds] = useState<Set<string>>(
     () => new Set(initialSnapshot.conceptRecords.filter((concept) => concept.status !== "active").map((concept) => concept.id))
   );
@@ -169,8 +171,9 @@ export function DashboardShell({ initialSnapshot }: DashboardShellProps) {
     setActiveStage(stageId);
   }
 
-  function handleSourceCreated() {
-    setLastAction("Notes processed. The guided flow lands on the mindmap first.");
+  function handleSourceCreated(result: SourceCreationResult) {
+    setLastIngestionResult(result);
+    setLastAction(describeSourceCreation(result));
     setActiveStage("map");
   }
 
@@ -376,6 +379,22 @@ export function DashboardShell({ initialSnapshot }: DashboardShellProps) {
                 This is the first useful screen after upload. Check whether the concept groups and relationships feel
                 credible, then move into familiarity.
               </p>
+              {lastIngestionResult ? (
+                <div className="status-summary-card">
+                  <div className="status-summary-header">
+                    <strong>{lastIngestionResult.processor === "gemini" ? "Processed with Gemini" : "Processed with heuristics"}</strong>
+                    <span className={`status-pill ${lastIngestionResult.fallbackReason ? "status-confusing" : "status-active"}`}>
+                      {lastIngestionResult.conceptCount} concepts
+                    </span>
+                  </div>
+                  <p className="muted">
+                    {lastIngestionResult.edgeCount} links created from {lastIngestionResult.source.title}.
+                  </p>
+                  {lastIngestionResult.fallbackReason ? (
+                    <p className="status-text">{lastIngestionResult.fallbackReason}</p>
+                  ) : null}
+                </div>
+              ) : null}
               <div className="stage-actions">
                 <button
                   className="action-button"
@@ -560,4 +579,15 @@ function countCompletedStages(snapshot: DashboardSnapshot, hasMap: boolean, rate
   }
 
   return count;
+}
+
+function describeSourceCreation(result: SourceCreationResult) {
+  const processorLabel = result.processor === "gemini" ? "Gemini" : "heuristic extraction";
+  const base = `${result.conceptCount} concepts and ${result.edgeCount} links added with ${processorLabel}.`;
+
+  if (result.fallbackReason) {
+    return `${base} ${result.fallbackReason}`;
+  }
+
+  return base;
 }

@@ -4,7 +4,15 @@ import { mkdtemp, rm, writeFile } from "node:fs/promises";
 import path from "node:path";
 import os from "node:os";
 
-import { createModule, createSource, generateQuizzes, getDashboardSnapshot, submitQuizAttempt, updateConcept } from "@/lib/app";
+import {
+  createModule,
+  createSource,
+  createSourceWithStatus,
+  generateQuizzes,
+  getDashboardSnapshot,
+  submitQuizAttempt,
+  updateConcept
+} from "@/lib/app";
 import { seedStore } from "@/lib/seed";
 import { resetStoreCache } from "@/lib/store";
 
@@ -168,13 +176,17 @@ test("source ingestion prefers Gemini semantic output when it is available", asy
       description: "Bayesian inference and conjugate updates."
     });
 
-    await createSource({
+    const created = await createSourceWithStatus({
       moduleId: moduleRecord.id,
       title: "Bayesian inference notes",
       content:
         "Posterior updates combine priors with new evidence. Conjugate priors make posterior updates tractable.",
       processor: "auto"
     });
+
+    assert.equal(created.processor, "gemini");
+    assert.equal(created.fallbackReason, undefined);
+    assert.equal(created.source.title, "Bayesian inference notes");
 
     const snapshot = await getDashboardSnapshot();
     const posterior = snapshot.conceptRecords.find((concept) => concept.title === "Bayesian Posterior");
@@ -225,13 +237,16 @@ test("source ingestion falls back to heuristics when Gemini is unavailable", asy
       description: "Inference with hidden variables."
     });
 
-    await createSource({
+    const created = await createSourceWithStatus({
       moduleId: moduleRecord.id,
       title: "Latent variable notes",
       content:
         "Latent variables explain hidden structure in the data. Posterior inference estimates hidden causes from observed evidence.",
       processor: "gemini"
     });
+
+    assert.equal(created.processor, "heuristic");
+    assert.match(created.fallbackReason ?? "", /Gemini fallback activated/);
 
     const snapshot = await getDashboardSnapshot();
     assert.ok(snapshot.conceptRecords.some((concept) => concept.title.toLowerCase().includes("latent variable")));

@@ -1,4 +1,4 @@
-import { createSource, getDashboardSnapshot } from "@/lib/app";
+import { createSourceWithStatus, getDashboardSnapshot } from "@/lib/app";
 import { badRequest, ok } from "@/app/api/_utils";
 
 export async function GET() {
@@ -20,7 +20,7 @@ export async function POST(request: Request) {
   }
 
   try {
-    const source = await createSource({
+    const result = await createSourceWithStatus({
       moduleId: body.moduleId,
       title: body.title,
       content: body.content,
@@ -28,7 +28,7 @@ export async function POST(request: Request) {
       processor: body.processor
     });
 
-    return ok(source, 201);
+    return ok(result, 201);
   } catch (error) {
     const message = error instanceof Error ? error.message : "Unable to create source";
     return badRequest(message, 404);

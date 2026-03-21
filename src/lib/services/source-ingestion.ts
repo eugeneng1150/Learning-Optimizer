@@ -15,11 +15,12 @@ import {
   ConceptRecord,
   EdgeType,
   ModuleRecord,
+  SourceProcessorKind,
   SourceDocument
 } from "@/lib/types";
 
 export type SourceProcessorPreference = "auto" | "gemini" | "heuristic";
-export type SourceProcessor = "gemini" | "heuristic";
+export type SourceProcessor = SourceProcessorKind;
 
 export interface SourceIngestionResult {
   processor: SourceProcessor;

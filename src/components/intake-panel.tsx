@@ -2,12 +2,12 @@
 
 import { ChangeEvent, FormEvent, useEffect, useRef, useState, useTransition } from "react";
 
-import { ModuleRecord } from "@/lib/types";
+import { ModuleRecord, SourceCreationResult } from "@/lib/types";
 
 interface IntakePanelProps {
   modules: ModuleRecord[];
   onMutate: () => Promise<void>;
-  onSourceCreated?: () => void;
+  onSourceCreated?: (result: SourceCreationResult) => void;
 }
 
 export function IntakePanel({ modules, onMutate, onSourceCreated }: IntakePanelProps) {
@@ -71,14 +71,18 @@ export function IntakePanel({ modules, onMutate, onSourceCreated }: IntakePanelP
           moduleId: selectedModuleId,
           title: sourceTitle,
           content: sourceContent,
-          kind: "text"
+          kind: "text",
+          processor: "auto"
         })
       });
 
       if (!response.ok) {
-        setMessage("Source ingestion failed.");
+        const payload = (await response.json().catch(() => null)) as { error?: string } | null;
+        setMessage(payload?.error || "Source ingestion failed.");
         return;
       }
+
+      const result = (await response.json()) as SourceCreationResult;
 
       setSourceTitle("");
       setSourceContent("");
@@ -87,8 +91,8 @@ export function IntakePanel({ modules, onMutate, onSourceCreated }: IntakePanelP
         fileInputRef.current.value = "";
       }
       await onMutate();
-      onSourceCreated?.();
-      setMessage("Notes processed. The mindmap is ready.");
+      onSourceCreated?.(result);
+      setMessage(formatIngestionMessage(result));
     });
   }
 
@@ -251,4 +255,15 @@ export function IntakePanel({ modules, onMutate, onSourceCreated }: IntakePanelP
 
 function stripTextExtension(fileName: string): string {
   return fileName.replace(/\.(txt|md)$/i, "").trim() || "Untitled source";
+}
+
+function formatIngestionMessage(result: SourceCreationResult) {
+  const processorLabel = result.processor === "gemini" ? "Gemini" : "heuristic";
+  const graphSummary = `${result.conceptCount} concepts and ${result.edgeCount} links`;
+
+  if (result.fallbackReason) {
+    return `${graphSummary} generated with heuristic fallback. ${result.fallbackReason}`;
+  }
+
+  return `${graphSummary} generated with ${processorLabel}.`;
 }

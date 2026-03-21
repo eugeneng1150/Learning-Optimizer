@@ -8,7 +8,11 @@ import {
   listDueConcepts,
   updateReviewState
 } from "@/lib/services/review";
-import { ingestSourceDocument, SourceProcessorPreference } from "@/lib/services/source-ingestion";
+import {
+  ingestSourceDocument,
+  SourceIngestionResult,
+  SourceProcessorPreference
+} from "@/lib/services/source-ingestion";
 import {
   AppStore,
   ConceptEdge,
@@ -22,6 +26,7 @@ import {
   QuizAttempt,
   QuizItem,
   ReviewState,
+  SourceCreationResult,
   SourceDocument
 } from "@/lib/types";
 
@@ -61,7 +66,8 @@ async function hydrateStore(): Promise<AppStore> {
       continue;
     }
 
-    nextStore = await ingestIntoStore(nextStore, moduleRecord, source, "heuristic");
+    const hydrated = await ingestIntoStore(nextStore, moduleRecord, source, "heuristic");
+    nextStore = hydrated.store;
   }
 
   await saveStore(nextStore);
@@ -73,7 +79,7 @@ async function ingestIntoStore(
   moduleRecord: ModuleRecord,
   source: SourceDocument,
   preferredProcessor: SourceProcessorPreference = "auto"
-): Promise<AppStore> {
+): Promise<{ store: AppStore; ingestion: SourceIngestionResult }> {
   const ingestion = await ingestSourceDocument({
     storeChunks: store.chunks,
     storeConcepts: store.concepts,
@@ -85,11 +91,14 @@ async function ingestIntoStore(
   const reviewStates = ensureReviewStates(store.reviewStates, ingestion.concepts, moduleRecord.userId);
 
   return {
-    ...store,
-    chunks: [...store.chunks, ...ingestion.chunks],
-    concepts: ingestion.concepts,
-    edges: ingestion.edges,
-    reviewStates
+    ingestion,
+    store: {
+      ...store,
+      chunks: [...store.chunks, ...ingestion.chunks],
+      concepts: ingestion.concepts,
+      edges: ingestion.edges,
+      reviewStates
+    }
   };
 }
 
@@ -237,6 +246,17 @@ export async function createSource(input: {
   kind?: "pdf" | "text";
   processor?: SourceProcessorPreference;
 }): Promise<SourceDocument> {
+  const result = await createSourceWithStatus(input);
+  return result.source;
+}
+
+export async function createSourceWithStatus(input: {
+  moduleId: string;
+  title: string;
+  content: string;
+  kind?: "pdf" | "text";
+  processor?: SourceProcessorPreference;
+}): Promise<SourceCreationResult> {
   const store = await hydrateStore();
   const moduleRecord = store.modules.find((item) => item.id === input.moduleId);
 
@@ -254,7 +274,7 @@ export async function createSource(input: {
     createdAt: new Date().toISOString()
   };
 
-  const nextStore = await ingestIntoStore(
+  const ingestionResult = await ingestIntoStore(
     {
       ...store,
       sources: [...store.sources, source]
@@ -264,7 +284,7 @@ export async function createSource(input: {
     input.processor ?? "auto"
   );
 
-  const refreshedStore = refreshQuizSet(nextStore);
+  const refreshedStore = refreshQuizSet(ingestionResult.store);
   refreshedStore.reminders = [
     ...refreshedStore.reminders,
     ...buildReminderJobs(
@@ -277,7 +297,13 @@ export async function createSource(input: {
   ];
 
   await saveStore(refreshedStore);
-  return source;
+  return {
+    source,
+    processor: ingestionResult.ingestion.processor,
+    fallbackReason: ingestionResult.ingestion.fallbackReason,
+    conceptCount: ingestionResult.ingestion.concepts.length,
+    edgeCount: ingestionResult.ingestion.edges.length
+  };
 }
 
 export async function updateConcept(
