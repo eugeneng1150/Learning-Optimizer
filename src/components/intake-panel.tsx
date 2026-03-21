@@ -20,6 +20,7 @@ export function IntakePanel({ modules, onMutate, onSourceCreated }: IntakePanelP
   const [ingestMode, setIngestMode] = useState<"paste" | "file">("paste");
   const [sourceTitle, setSourceTitle] = useState("");
   const [sourceContent, setSourceContent] = useState("");
+  const [selectedFile, setSelectedFile] = useState<File | null>(null);
   const [selectedFileName, setSelectedFileName] = useState<string | null>(null);
   const [message, setMessage] = useState<string | null>(null);
 
@@ -64,17 +65,25 @@ export function IntakePanel({ modules, onMutate, onSourceCreated }: IntakePanelP
 
     startTransition(async () => {
       setMessage(null);
-      const response = await fetch("/api/sources", {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({
-          moduleId: selectedModuleId,
-          title: sourceTitle,
-          content: sourceContent,
-          kind: "text",
-          processor: "auto"
-        })
-      });
+      const shouldUploadPdf = ingestMode === "file" && selectedFileName?.toLowerCase().endsWith(".pdf") && selectedFile;
+      const response =
+        shouldUploadPdf
+          ? await uploadSourceFile({
+              moduleId: selectedModuleId,
+              title: sourceTitle,
+              file: selectedFile
+            })
+          : await fetch("/api/sources", {
+              method: "POST",
+              headers: { "Content-Type": "application/json" },
+              body: JSON.stringify({
+                moduleId: selectedModuleId,
+                title: sourceTitle,
+                content: sourceContent,
+                kind: "text",
+                processor: "auto"
+              })
+            });
 
       if (!response.ok) {
         const payload = (await response.json().catch(() => null)) as { error?: string } | null;
@@ -86,6 +95,7 @@ export function IntakePanel({ modules, onMutate, onSourceCreated }: IntakePanelP
 
       setSourceTitle("");
       setSourceContent("");
+      setSelectedFile(null);
       setSelectedFileName(null);
       if (fileInputRef.current) {
         fileInputRef.current.value = "";
@@ -106,19 +116,29 @@ export function IntakePanel({ modules, onMutate, onSourceCreated }: IntakePanelP
     const isSupported =
       lowerName.endsWith(".txt") ||
       lowerName.endsWith(".md") ||
+      lowerName.endsWith(".pdf") ||
       file.type === "text/plain" ||
-      file.type === "text/markdown";
+      file.type === "text/markdown" ||
+      file.type === "application/pdf";
 
     if (!isSupported) {
-      setMessage("Only .txt and .md files are supported for browser capture.");
+      setMessage("Only .txt, .md, and .pdf files are supported.");
       event.target.value = "";
       return;
     }
 
-    const text = await file.text();
+    setSelectedFile(file);
     setSelectedFileName(file.name);
-    setSourceContent(text);
     setSourceTitle((current) => current || stripTextExtension(file.name));
+
+    if (lowerName.endsWith(".pdf") || file.type === "application/pdf") {
+      setSourceContent("");
+      setMessage(`Loaded ${file.name}. The server will extract text from the PDF during upload.`);
+      return;
+    }
+
+    const text = await file.text();
+    setSourceContent(text);
     setMessage(`Loaded ${file.name} into the ingest form.`);
   }
 
@@ -180,7 +200,7 @@ export function IntakePanel({ modules, onMutate, onSourceCreated }: IntakePanelP
               aria-pressed={ingestMode === "file"}
               onClick={() => setIngestMode("file")}
             >
-              Upload .txt / .md
+              Upload file
             </button>
           </div>
 
@@ -213,17 +233,17 @@ export function IntakePanel({ modules, onMutate, onSourceCreated }: IntakePanelP
           ) : (
             <div className="full-width file-capture-card">
               <label>
-                Browser capture
+                File upload
                 <input
                   ref={fileInputRef}
                   type="file"
-                  accept=".txt,.md,text/plain,text/markdown"
+                  accept=".txt,.md,.pdf,text/plain,text/markdown,application/pdf"
                   onChange={handleFileSelect}
                 />
               </label>
               <p className="muted">
-                Load a local text or markdown file in the browser. The contents are read client-side and submitted
-                through the same source API.
+                Upload a local text, markdown, or PDF file. Text files are previewed in the browser. PDFs are sent to
+                the server for extraction before they enter the same source pipeline.
               </p>
               <label>
                 File preview
@@ -231,8 +251,12 @@ export function IntakePanel({ modules, onMutate, onSourceCreated }: IntakePanelP
                   value={sourceContent}
                   onChange={(event) => setSourceContent(event.target.value)}
                   rows={8}
-                  placeholder="File contents will appear here after upload..."
-                  required
+                  placeholder={
+                    selectedFileName?.toLowerCase().endsWith(".pdf")
+                      ? "PDF text will be extracted on the server during upload..."
+                      : "File contents will appear here after upload..."
+                  }
+                  required={!selectedFileName?.toLowerCase().endsWith(".pdf")}
                 />
               </label>
             </div>
@@ -242,7 +266,17 @@ export function IntakePanel({ modules, onMutate, onSourceCreated }: IntakePanelP
           ) : ingestMode === "file" ? (
             <p className="muted">No file selected yet.</p>
           ) : null}
-          <button className="action-button" type="submit" disabled={isPending || !modules.length}>
+          <button
+            className="action-button"
+            type="submit"
+            disabled={
+              isPending ||
+              !modules.length ||
+              (ingestMode === "file"
+                ? !selectedFile || (!selectedFileName?.toLowerCase().endsWith(".pdf") && !sourceContent.trim())
+                : false)
+            }
+          >
             {isPending ? "Processing..." : "Process notes"}
           </button>
         </form>
@@ -254,7 +288,7 @@ export function IntakePanel({ modules, onMutate, onSourceCreated }: IntakePanelP
 }
 
 function stripTextExtension(fileName: string): string {
-  return fileName.replace(/\.(txt|md)$/i, "").trim() || "Untitled source";
+  return fileName.replace(/\.(txt|md|pdf)$/i, "").trim() || "Untitled source";
 }
 
 function formatIngestionMessage(result: SourceCreationResult) {
@@ -266,4 +300,17 @@ function formatIngestionMessage(result: SourceCreationResult) {
   }
 
   return `${graphSummary} generated with ${processorLabel}.`;
+}
+
+async function uploadSourceFile(input: { moduleId: string; title: string; file: File }) {
+  const formData = new FormData();
+  formData.set("moduleId", input.moduleId);
+  formData.set("title", input.title);
+  formData.set("processor", "auto");
+  formData.set("file", input.file);
+
+  return fetch("/api/sources", {
+    method: "POST",
+    body: formData
+  });
 }

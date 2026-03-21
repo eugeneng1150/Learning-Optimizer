@@ -27,7 +27,7 @@ Near-term product direction:
 - the experience should become a guided flow, not a collection of separate workspaces
 - users should upload notes and land on a generated mindmap first
 - users should rate familiarity per concept before the quiz step
-- Gemini should become the primary semantic ingestion layer for uploaded notes
+- Gemini should become the primary semantic ingestion and retrieval layer for uploaded notes
 
 ## What Exists Today
 
@@ -35,8 +35,8 @@ The current repo contains a functional prototype with these implemented capabili
 
 Important distinction:
 
-- the current implementation is still a workspace-first prototype
-- the intended next UX is a guided post-login journey from upload to map to familiarity to quiz to review
+- the repo now ships a guided post-login journey from upload to map to familiarity to quiz to review
+- the remaining work is to make ingest, retrieval, and persistence deeper rather than to keep redesigning the shell
 
 ### Ingestion
 
@@ -44,21 +44,42 @@ The system can:
 
 - create modules
 - create learning sources
+- accept pasted text plus `.txt`, `.md`, and text-based `.pdf` uploads
 - chunk source text
-- generate lightweight embedding-like vectors
+- generate heuristic chunk vectors by default
 - extract candidate concepts from chunks
 
-This is currently heuristic rather than model-backed.
+This is now hybrid rather than fully heuristic:
+
+- Gemini semantic extraction is available for active ingest
+- Gemini chunk embeddings are available for active ingest
+- the fallback path still uses heuristic chunk vectors and concept extraction
 
 Important current limit:
 
-- the repo does not yet implement real PDF extraction; `kind: "pdf"` exists in the data model, but the active ingest path still assumes text content is already available
+- PDF ingest is now server-side, but it is still limited to text-based PDFs with light cleanup only
 
 Planned next direction:
 
 - uploaded notes should be sent through Gemini-backed semantic processing
 - Gemini should return structured concepts, relationships, summaries, and grounded evidence
 - the app should persist the resulting graph and review-ready data for later quiz and study flows
+
+### Retrieval
+
+The repo now has a first retrieval-backed capability.
+
+The current retrieval layer can:
+
+- embed live concept questions
+- rank stored chunks semantically
+- answer concept-specific questions against retrieved evidence
+- regenerate concept quiz prompts with retrieved chunk grounding
+- fall back to heuristic retrieval when Gemini is unavailable
+
+Current limit:
+
+- retrieval is exposed in concept detail and explicit quiz regeneration, but not yet in a broader search UI
 
 ### Graph Generation
 
@@ -155,6 +176,7 @@ Bootstrap/import tooling now exists to move a local `.data/store.json` snapshot 
 
 - `src/lib/services/ingestion.ts`
 - `src/lib/services/graph.ts`
+- `src/lib/services/retrieval.ts`
 - `src/lib/services/review.ts`
 - `src/lib/services/quiz.ts`
 
@@ -179,6 +201,7 @@ The repo currently exposes these main routes:
 - `GET/POST /api/sources`
 - `GET /api/graph`
 - `PATCH /api/concepts/[id]`
+- `POST /api/concepts/[id]/evidence`
 - `PATCH /api/edges/[id]`
 - `GET /api/reviews/due`
 - `POST /api/quizzes/generate`
@@ -194,25 +217,15 @@ This is still a functional prototype, not a production system.
 Important current limits:
 
 - the Postgres path still rewrites a whole normalized store rather than using narrower repositories
-- heuristic extraction instead of LLM-backed extraction
-- text-first ingestion instead of full document ingestion
+- retrieval is only partially integrated and not yet exposed as general note search
+- PDF ingestion still needs stronger extraction quality and validation
 - no auth or user isolation beyond the demo data model
 - no real background queue for scheduled jobs
-- the UI is still organized as separate workspaces with too many competing actions
+- graph layout is persisted in browser workspace state, but graph curation changes are not yet durable app state
 
 ## Recommended Next Build Steps
 
-### 1. Redesign The Product Flow
-
-Restructure the UI around a clearer guided journey:
-
-- upload notes
-- inspect generated mindmap
-- rate familiarity
-- generate quizzes
-- continue review
-
-### 2. Improve Ingestion
+### 1. Improve Ingestion
 
 Add Gemini-backed semantic ingestion for uploaded notes:
 
@@ -220,10 +233,19 @@ Add Gemini-backed semantic ingestion for uploaded notes:
 - send uploaded note content through Gemini processing
 - persist structured concept, relationship, summary, and evidence output
 - keep the app grounded in persisted evidence after ingestion
+- harden the new server-side PDF path with better extraction handling and validation
 
-### 3. Add Familiarity-Guided Study
+### 2. Expand Retrieval
 
-Introduce a user-specific per-concept familiarity rating so study and quiz flows can reflect self-assessed confidence before later quiz outcomes refine the schedule.
+- reuse retrieval for quiz generation and grounded note search
+- keep answers tied to retrieved chunk evidence
+- make retrieval quality less dependent on one concept-detail surface
+
+### 3. Persist Graph Workspace
+
+- keep manual layout persistence
+- persist graph curation actions in durable app state
+- make the graph a real workspace instead of only a browser-session visualization
 
 ### 4. Upgrade Persistence
 

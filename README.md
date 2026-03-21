@@ -25,18 +25,19 @@ In the current implementation, users can:
 
 - create modules
 - add text-based learning sources
+- upload `.txt`, `.md`, and text-based `.pdf` files
 - generate concept nodes and evidence-backed edges
 - inspect related concepts in a graph view
 - review due concepts from a spaced-repetition queue
 - answer mixed recall quiz prompts
 - store reminder settings for in-app and email review nudges
 
-Planned next UX direction:
+Current UX direction:
 
-- make the mindmap the first success screen after ingestion
-- replace scattered workspace actions with one primary action per stage
-- add per-concept familiarity rating before quiz generation
-- move from heuristic ingestion toward Gemini-backed document understanding
+- keep the app as a guided flow with one primary task per stage
+- use the mindmap as the first success screen after ingestion
+- capture per-concept familiarity before quiz generation
+- add retrieval-backed evidence surfaces on top of the stored graph and chunks
 
 ## Current Product Areas
 
@@ -79,12 +80,24 @@ Users can create modules and add source content that gets chunked and processed 
 
 The current prototype supports text ingestion. The planned direction is Gemini-backed document understanding, where uploaded notes are processed into concepts, relationships, summaries, and evidence before the app persists the resulting graph.
 
-Today, the active implementation is still text-first and prototype-grade.
+Today, the active implementation is still text-first and prototype-grade, but Gemini can now power both semantic extraction and chunk embeddings when it is configured.
 
 The ingestion service now prefers Gemini-backed semantic extraction when `GEMINI_API_KEY` is configured, and falls
 back to the existing heuristic chunk-and-extract path when Gemini is unavailable or returns unusable output.
 
-### 5. Reminder Settings
+### 5. Retrieval Workspace
+
+The app now has a first RAG slice built on the persisted chunk store.
+
+Current retrieval capabilities:
+
+- Gemini-backed chunk embeddings during active ingest
+- semantic retrieval over stored chunks
+- grounded concept questions in the concept detail panel
+- retrieval-backed quiz regeneration for concept prompts
+- fallback to heuristic embeddings and answer assembly when Gemini is unavailable
+
+### 6. Reminder Settings
 
 Reminder settings are now configurable through the app and persisted through the `/api/reminders` route.
 
@@ -152,10 +165,11 @@ Gemini-backed ingestion is optional. To enable it locally, copy `.env.example` t
 ```bash
 GEMINI_API_KEY=your_api_key
 GEMINI_MODEL=gemini-2.0-flash
+GEMINI_EMBEDDING_MODEL=gemini-embedding-001
 GEMINI_API_BASE_URL=https://generativelanguage.googleapis.com/v1beta/models
 ```
 
-`GEMINI_API_BASE_URL` is optional and only needed if the Gemini endpoint needs to be overridden.
+`GEMINI_EMBEDDING_MODEL` and `GEMINI_API_BASE_URL` are optional. The embedding model only needs to be overridden if you want something other than the repo default.
 
 If `GEMINI_API_KEY` is not set, source ingestion continues to work through the heuristic fallback path.
 
@@ -241,13 +255,35 @@ It now also accepts an optional `processor` value:
 The stored `SourceDocument` shape is unchanged. Gemini only changes how concepts and relationships are derived from
 the submitted source text.
 
+When Gemini is configured, active source ingest also attempts to replace the default heuristic chunk vectors with
+Gemini retrieval embeddings so later chunk search can run in the same embedding space as live queries.
+
+The same route also now accepts `multipart/form-data` uploads for `.txt`, `.md`, and text-based `.pdf` files.
+
+## Retrieval Contract
+
+The repo now exposes a concept-scoped retrieval route:
+
+- `POST /api/concepts/[id]/evidence`
+
+Request body:
+
+- `query`
+
+Response shape:
+
+- grounded `answer`
+- ranked `matches`
+- `processor` indicating whether Gemini or the heuristic fallback answered
+- optional `fallbackReason`
+
 ## Near-Term Next Steps
 
 The most important functional improvements from here are:
 
-- redesign the UI around a guided flow instead of separate workspaces
-- add Gemini-backed ingestion so uploaded notes can produce richer concept maps
-- add per-concept familiarity rating before quiz generation
+- improve PDF extraction quality and file validation around the new upload path
+- persist graph curation actions in durable app state, not only browser workspace state
+- expand retrieval from concept detail and quiz regeneration into general note search
 - split the normalized Postgres path into repository-style reads and writes instead of full-store rewrites
 - add robust background job handling for reminders and ingestion
 - tighten scoring and mastery evaluation logic

@@ -69,6 +69,10 @@ export function QuizPanel({ quizzes, onRefresh, onGenerateQuiz }: QuizPanelProps
           Regenerate quiz set
         </button>
       </div>
+      <p className="muted">
+        Regenerated quizzes now pull the most relevant stored note chunks before building the expected answer and
+        grounding excerpts.
+      </p>
 
       {quiz ? (
         <>

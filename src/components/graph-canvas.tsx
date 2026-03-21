@@ -68,6 +68,16 @@ const WORLD_CENTER = { x: WIDTH / 2, y: HEIGHT / 2 };
 const WORLD_SOFT_LIMIT_X = WIDTH * 1.9;
 const WORLD_SOFT_LIMIT_Y = HEIGHT * 1.9;
 const DEFAULT_VIEWPORT: ViewportState = { x: 0, y: 0, scale: 1 };
+const GRAPH_WORKSPACE_STORAGE_KEY = "learning-optimizer.graph-workspace.v1";
+
+interface GraphWorkspaceState {
+  viewport: ViewportState;
+  focusMode: boolean;
+  isDrawerOpen: boolean;
+  focusedConceptId?: string;
+  expandedNodeIds: string[];
+  positions: Record<string, GraphPoint>;
+}
 
 export function GraphCanvas({
   nodes,
@@ -79,10 +89,12 @@ export function GraphCanvas({
   const interactionRef = useRef<GraphInteraction>(null);
   const dragAnchorRef = useRef<DragAnchorState | null>(null);
   const simulationFrameRef = useRef<number | null>(null);
+  const previousFocusIdRef = useRef<string | undefined>(undefined);
   const positionsRef = useRef<Record<string, GraphPoint>>({});
   const velocitiesRef = useRef<Record<string, GraphPoint>>({});
   const [viewport, setViewport] = useState<ViewportState>(DEFAULT_VIEWPORT);
   const [dragAnchor, setDragAnchor] = useState<DragAnchorState | null>(null);
+  const [persistedPositions, setPersistedPositions] = useState<Record<string, GraphPoint>>({});
   const [simulationPositions, setSimulationPositions] = useState<Record<string, GraphPoint>>({});
   const [simulationPulse, setSimulationPulse] = useState(0);
   const [focusMode, setFocusMode] = useState(true);
@@ -90,8 +102,11 @@ export function GraphCanvas({
   const [focusedConceptId, setFocusedConceptId] = useState<string | undefined>(selectedConceptId);
   const [activeEdgeTypes, setActiveEdgeTypes] = useState<ConceptEdge["type"][]>([]);
   const [expandedNodeIds, setExpandedNodeIds] = useState<string[]>([]);
+  const [workspaceReady, setWorkspaceReady] = useState(false);
 
   const safeNodes = nodes.slice(0, 28);
+  const safeNodeIdSet = new Set(safeNodes.map((node) => node.id));
+  const safeNodeKey = safeNodes.map((node) => node.id).join("|");
   const selectedId = selectedConceptId ?? safeNodes[0]?.id;
   const focusId = focusedConceptId && safeNodes.some((node) => node.id === focusedConceptId)
     ? focusedConceptId
@@ -145,11 +160,74 @@ export function GraphCanvas({
   const hiddenNeighborCounts = buildHiddenNeighborCounts(visibleNodeIds, edgeIdsByNode, enabledEdgeTypes);
 
   useEffect(() => {
-    const seeded = seedSimulationPositions(visibleNodes, basePositions);
+    if (typeof window === "undefined") {
+      setWorkspaceReady(true);
+      return;
+    }
+
+    try {
+      const raw = window.localStorage.getItem(GRAPH_WORKSPACE_STORAGE_KEY);
+      if (!raw) {
+        setWorkspaceReady(true);
+        return;
+      }
+
+      const parsed = JSON.parse(raw) as Partial<GraphWorkspaceState>;
+      if (parsed.viewport) {
+        setViewport({
+          x: typeof parsed.viewport.x === "number" ? parsed.viewport.x : DEFAULT_VIEWPORT.x,
+          y: typeof parsed.viewport.y === "number" ? parsed.viewport.y : DEFAULT_VIEWPORT.y,
+          scale:
+            typeof parsed.viewport.scale === "number"
+              ? clamp(parsed.viewport.scale, MIN_SCALE, MAX_SCALE)
+              : DEFAULT_VIEWPORT.scale
+        });
+      }
+
+      if (typeof parsed.focusMode === "boolean") {
+        setFocusMode(parsed.focusMode);
+      }
+
+      if (typeof parsed.isDrawerOpen === "boolean") {
+        setIsDrawerOpen(parsed.isDrawerOpen);
+      }
+
+      if (parsed.focusedConceptId && safeNodeIdSet.has(parsed.focusedConceptId)) {
+        setFocusedConceptId(parsed.focusedConceptId);
+      }
+
+      if (Array.isArray(parsed.expandedNodeIds)) {
+        setExpandedNodeIds(parsed.expandedNodeIds.filter((nodeId) => safeNodeIdSet.has(nodeId)));
+      }
+
+      const nextPositions = Object.fromEntries(
+        Object.entries(parsed.positions ?? {}).filter(
+          ([nodeId, point]) =>
+            safeNodeIdSet.has(nodeId) &&
+            point &&
+            typeof point === "object" &&
+            typeof point.x === "number" &&
+            typeof point.y === "number"
+        )
+      ) as Record<string, GraphPoint>;
+      setPersistedPositions(nextPositions);
+    } catch {
+      setPersistedPositions({});
+    } finally {
+      setWorkspaceReady(true);
+    }
+  }, [safeNodeKey]);
+
+  useEffect(() => {
+    if (!workspaceReady) {
+      return;
+    }
+
+    const seeded = seedSimulationPositions(visibleNodes, basePositions, persistedPositions);
     positionsRef.current = seeded;
     velocitiesRef.current = Object.fromEntries(Object.keys(seeded).map((nodeId) => [nodeId, { x: 0, y: 0 }]));
     setSimulationPositions(seeded);
-  }, [visibleNodeKey, visibleEdgeKey, focusId, focusMode, enabledEdgeTypes.join("|")]);
+  }, [visibleNodeKey, visibleEdgeKey, focusId, focusMode, enabledEdgeTypes.join("|"), persistedPositions, workspaceReady]);
 
   useEffect(() => {
     if (!visibleNodes.length) {
@@ -205,10 +283,14 @@ export function GraphCanvas({
   useEffect(() => {
     if (!focusId) {
       setExpandedNodeIds([]);
+      previousFocusIdRef.current = undefined;
       return;
     }
 
-    setExpandedNodeIds([]);
+    if (previousFocusIdRef.current && previousFocusIdRef.current !== focusId) {
+      setExpandedNodeIds([]);
+    }
+    previousFocusIdRef.current = focusId;
   }, [focusId]);
 
   useEffect(() => {
@@ -226,6 +308,28 @@ export function GraphCanvas({
       return filtered.length === current.length ? current : filtered;
     });
   }, [focusId]);
+
+  useEffect(() => {
+    if (!workspaceReady || typeof window === "undefined") {
+      return;
+    }
+
+    const timer = window.setTimeout(() => {
+      const state: GraphWorkspaceState = {
+        viewport,
+        focusMode,
+        isDrawerOpen,
+        focusedConceptId,
+        expandedNodeIds,
+        positions: positionsRef.current
+      };
+      window.localStorage.setItem(GRAPH_WORKSPACE_STORAGE_KEY, JSON.stringify(state));
+    }, 220);
+
+    return () => {
+      window.clearTimeout(timer);
+    };
+  }, [viewport, focusMode, isDrawerOpen, focusedConceptId, expandedNodeIds, simulationPositions, dragAnchor, workspaceReady]);
 
   function toCanvasPoint(clientX: number, clientY: number): GraphPoint {
     const svg = svgRef.current;
@@ -254,6 +358,22 @@ export function GraphCanvas({
     }
 
     setSimulationPulse((current) => current + 1);
+  }
+
+  function resetLayout() {
+    const nextFocusId = selectedId ?? safeNodes[0]?.id;
+    setViewport(DEFAULT_VIEWPORT);
+    setFocusMode(true);
+    setFocusedConceptId(nextFocusId);
+    setExpandedNodeIds([]);
+    setPersistedPositions({});
+    const seeded = seedSimulationPositions(visibleNodes, basePositions, {});
+    positionsRef.current = seeded;
+    velocitiesRef.current = Object.fromEntries(Object.keys(seeded).map((nodeId) => [nodeId, { x: 0, y: 0 }]));
+    setSimulationPositions(seeded);
+    if (typeof window !== "undefined") {
+      window.localStorage.removeItem(GRAPH_WORKSPACE_STORAGE_KEY);
+    }
   }
 
   function handleCanvasPointerDown(event: PointerEvent<SVGRectElement>) {
@@ -415,6 +535,9 @@ export function GraphCanvas({
           </button>
           <button className="ghost-button" type="button" onClick={() => setViewport(DEFAULT_VIEWPORT)}>
             Reset view
+          </button>
+          <button className="ghost-button" type="button" onClick={resetLayout}>
+            Reset layout
           </button>
           <button className="ghost-button" type="button" onClick={() => setIsDrawerOpen((current) => !current)}>
             {isDrawerOpen ? "Hide details" : "Show details"}
@@ -870,10 +993,16 @@ function toggleExpandedNode(current: string[], nodeId: string) {
 
 function seedSimulationPositions(
   nodes: ConceptNode[],
-  basePositions: Map<string, Pick<PositionedGraphNode, "x" | "y" | "role">>
+  basePositions: Map<string, Pick<PositionedGraphNode, "x" | "y" | "role">>,
+  persistedPositions: Record<string, GraphPoint>
 ) {
   return Object.fromEntries(
     nodes.map((node, index) => {
+      const persisted = persistedPositions[node.id];
+      if (persisted) {
+        return [node.id, persisted];
+      }
+
       const base = basePositions.get(node.id) ?? { x: WIDTH / 2, y: HEIGHT / 2 };
       const angle = (index / Math.max(nodes.length, 1)) * Math.PI * 2;
       const jitter = node.id === nodes[0]?.id ? 0 : 18;

@@ -2,7 +2,7 @@
 
 import { FormEvent, useEffect, useState, useTransition } from "react";
 
-import { ConceptEdgeRecord, ConceptRecord, FamiliarityRating, ModuleRecord } from "@/lib/types";
+import { ConceptEdgeRecord, ConceptRecord, FamiliarityRating, ModuleRecord, RetrievalAnswer } from "@/lib/types";
 
 interface ConceptPanelProps {
   concept?: ConceptRecord;
@@ -26,13 +26,18 @@ export function ConceptPanel({ concept, familiarityRating, modules, relatedEdges
   const [status, setStatus] = useState<ConceptRecord["status"]>(concept?.status ?? "active");
   const [familiarity, setFamiliarity] = useState<FamiliarityRating | "">(familiarityRating ?? "");
   const [isPending, startTransition] = useTransition();
+  const [isQueryPending, startQueryTransition] = useTransition();
   const [similarModules, setSimilarModules] = useState<Array<{ moduleId: string; title: string; score: number; reasons: string[] }>>([]);
+  const [ragQuery, setRagQuery] = useState("");
+  const [ragResult, setRagResult] = useState<RetrievalAnswer | null>(null);
 
   useEffect(() => {
     setTitle(concept?.title ?? "");
     setSummary(concept?.summary ?? "");
     setStatus(concept?.status ?? "active");
     setFamiliarity(familiarityRating ?? "");
+    setRagQuery("");
+    setRagResult(null);
   }, [concept, familiarityRating]);
 
   useEffect(() => {
@@ -105,6 +110,35 @@ export function ConceptPanel({ concept, familiarityRating, modules, relatedEdges
     });
   }
 
+  async function handleAskEvidence(event: FormEvent<HTMLFormElement>) {
+    event.preventDefault();
+
+    if (!ragQuery.trim()) {
+      return;
+    }
+
+    startQueryTransition(async () => {
+      const response = await fetch(`/api/concepts/${conceptId}/evidence`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ query: ragQuery })
+      });
+
+      const data = (await response.json()) as RetrievalAnswer | { error?: string };
+      if (!response.ok) {
+        setRagResult({
+          query: ragQuery,
+          answer: data && "error" in data ? data.error ?? "Evidence lookup failed." : "Evidence lookup failed.",
+          matches: [],
+          processor: "heuristic"
+        });
+        return;
+      }
+
+      setRagResult(data as RetrievalAnswer);
+    });
+  }
+
   return (
     <aside className="panel detail-panel">
       <div className="panel-header">
@@ -164,6 +198,54 @@ export function ConceptPanel({ concept, familiarityRating, modules, relatedEdges
             </li>
           ))}
         </ul>
+      </div>
+
+      <div className="subpanel">
+        <h3>Ask These Notes</h3>
+        <form className="form-grid" onSubmit={handleAskEvidence}>
+          <label className="full-width">
+            Grounded question
+            <textarea
+              value={ragQuery}
+              onChange={(event) => setRagQuery(event.target.value)}
+              rows={3}
+              placeholder={`Ask something specific about ${concept.title.toLowerCase()}`}
+            />
+          </label>
+          <button className="ghost-button" type="submit" disabled={isQueryPending || !ragQuery.trim()}>
+            {isQueryPending ? "Searching notes..." : "Search notes"}
+          </button>
+        </form>
+
+        {ragResult ? (
+          <div className="compact-list">
+            <div>
+              <strong>{ragResult.processor === "gemini" ? "Gemini-grounded answer" : "Retrieved note answer"}</strong>
+              <span>{ragResult.answer}</span>
+            </div>
+            {ragResult.fallbackReason ? (
+              <div>
+                <strong>Fallback</strong>
+                <span>{ragResult.fallbackReason}</span>
+              </div>
+            ) : null}
+            <div>
+              <strong>Retrieved evidence</strong>
+              <ul className="compact-list">
+                {ragResult.matches.map((match) => (
+                  <li key={match.chunkId}>
+                    <strong>
+                      {match.sourceId} · {Math.round(match.score * 100)}%
+                    </strong>
+                    <span>{match.text}</span>
+                  </li>
+                ))}
+              </ul>
+            </div>
+          </div>
+        ) : (
+          <p className="muted">Ask a question and the app will retrieve the most relevant chunks for this concept.</p>
+        )}
       </div>
 
       <div className="subpanel">

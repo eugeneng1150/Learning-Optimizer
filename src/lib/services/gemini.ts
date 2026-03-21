@@ -2,6 +2,8 @@ import { EdgeType } from "@/lib/types";
 
 const DEFAULT_GEMINI_MODEL = "gemini-2.0-flash";
 const DEFAULT_GEMINI_ENDPOINT = "https://generativelanguage.googleapis.com/v1beta/models";
+const DEFAULT_GEMINI_EMBEDDING_MODEL = "gemini-embedding-001";
+const DEFAULT_GEMINI_EMBEDDING_DIMENSIONALITY = 768;
 
 export interface GeminiSemanticConcept {
   title: string;
@@ -49,6 +51,18 @@ function getGeminiConfig() {
   };
 }
 
+function getGeminiEmbeddingConfig() {
+  const { apiKey, endpoint } = getGeminiConfig();
+  const rawModel = process.env.GEMINI_EMBEDDING_MODEL?.trim() || DEFAULT_GEMINI_EMBEDDING_MODEL;
+
+  return {
+    apiKey,
+    endpoint,
+    model: rawModel.replace(/^models\//, ""),
+    outputDimensionality: DEFAULT_GEMINI_EMBEDDING_DIMENSIONALITY
+  };
+}
+
 function buildPrompt(moduleTitle: string, sourceTitle: string, sourceContent: string): string {
   return [
     "You extract learning concepts from study notes for a knowledge graph.",
@@ -66,6 +80,30 @@ function buildPrompt(moduleTitle: string, sourceTitle: string, sourceContent: st
     `Source: ${sourceTitle}`,
     "Notes:",
     sourceContent.slice(0, 30000)
+  ].join("\n");
+}
+
+function buildGroundedAnswerPrompt(input: {
+  conceptTitle: string;
+  conceptSummary: string;
+  query: string;
+  evidence: string[];
+}): string {
+  return [
+    "You answer questions about a learning concept using retrieved study-note evidence only.",
+    "Return JSON only.",
+    'Schema: { "answer": string }',
+    "Requirements:",
+    "- Keep the answer under 180 words.",
+    "- Use only the provided evidence excerpts.",
+    "- If the evidence is insufficient, say so clearly.",
+    "- Do not invent citations or facts outside the excerpts.",
+    "",
+    `Concept: ${input.conceptTitle}`,
+    `Concept summary: ${input.conceptSummary}`,
+    `Question: ${input.query}`,
+    "Evidence excerpts:",
+    ...input.evidence.map((excerpt, index) => `[${index + 1}] ${excerpt}`)
   ].join("\n");
 }
 
@@ -242,6 +280,69 @@ function parseGeminiPayload(payload: unknown): GeminiSemanticExtraction {
   };
 }
 
+function parseEmbeddingValues(payload: unknown): number[] {
+  if (Array.isArray(payload)) {
+    return payload.map((value) => Number(value)).filter((value) => Number.isFinite(value));
+  }
+
+  if (!payload || typeof payload !== "object") {
+    return [];
+  }
+
+  const direct = Reflect.get(payload, "values");
+  if (Array.isArray(direct)) {
+    return direct.map((value) => Number(value)).filter((value) => Number.isFinite(value));
+  }
+
+  const nested = Reflect.get(payload, "embedding");
+  if (nested && typeof nested === "object") {
+    return parseEmbeddingValues(nested);
+  }
+
+  return [];
+}
+
+function parseGeminiEmbeddingsPayload(payload: unknown): number[][] {
+  if (!payload || typeof payload !== "object") {
+    throw new GeminiUnavailableError("Gemini returned no embeddings");
+  }
+
+  const embeddings = Reflect.get(payload, "embeddings");
+  if (Array.isArray(embeddings)) {
+    const values = embeddings.map((embedding) => parseEmbeddingValues(embedding)).filter((item) => item.length > 0);
+    if (!values.length) {
+      throw new GeminiUnavailableError("Gemini returned unusable embeddings");
+    }
+
+    return values;
+  }
+
+  const single = parseEmbeddingValues(payload);
+  if (single.length) {
+    return [single];
+  }
+
+  throw new GeminiUnavailableError("Gemini returned unusable embeddings");
+}
+
+function parseGroundedAnswerPayload(payload: unknown): string {
+  const rawText = extractTextCandidate(payload).trim();
+  if (!rawText) {
+    throw new GeminiUnavailableError("Gemini returned an empty grounded answer");
+  }
+
+  try {
+    const parsed = JSON.parse(rawText) as { answer?: unknown };
+    if (typeof parsed.answer === "string" && parsed.answer.trim()) {
+      return parsed.answer.trim();
+    }
+  } catch {
+    return rawText;
+  }
+
+  return rawText;
+}
+
 export async function requestGeminiSemanticExtraction(input: {
   moduleTitle: string;
   sourceTitle: string;
@@ -275,4 +376,104 @@ export async function requestGeminiSemanticExtraction(input: {
 
   const payload = (await response.json().catch(() => null)) as unknown;
   return parseGeminiPayload(payload);
+}
+
+export async function requestGeminiDocumentEmbeddings(input: {
+  texts: Array<{ text: string; title?: string }>;
+}): Promise<number[][]> {
+  const { apiKey, endpoint, model, outputDimensionality } = getGeminiEmbeddingConfig();
+  const response = await fetch(`${endpoint}/${model}:batchEmbedContents`, {
+    method: "POST",
+    headers: {
+      "Content-Type": "application/json",
+      "x-goog-api-key": apiKey
+    },
+    body: JSON.stringify({
+      requests: input.texts.map((item) => ({
+        model: `models/${model}`,
+        content: {
+          parts: [{ text: item.text }]
+        },
+        taskType: "RETRIEVAL_DOCUMENT",
+        title: item.title,
+        outputDimensionality
+      }))
+    })
+  });
+
+  if (!response.ok) {
+    const details = await response.text().catch(() => "");
+    throw new GeminiUnavailableError(`Gemini embedding request failed (${response.status})${details ? `: ${details}` : ""}`);
+  }
+
+  const payload = (await response.json().catch(() => null)) as unknown;
+  return parseGeminiEmbeddingsPayload(payload);
+}
+
+export async function requestGeminiQueryEmbedding(query: string): Promise<number[]> {
+  const { apiKey, endpoint, model, outputDimensionality } = getGeminiEmbeddingConfig();
+  const response = await fetch(`${endpoint}/${model}:embedContent`, {
+    method: "POST",
+    headers: {
+      "Content-Type": "application/json",
+      "x-goog-api-key": apiKey
+    },
+    body: JSON.stringify({
+      model: `models/${model}`,
+      content: {
+        parts: [{ text: query }]
+      },
+      taskType: "RETRIEVAL_QUERY",
+      outputDimensionality
+    })
+  });
+
+  if (!response.ok) {
+    const details = await response.text().catch(() => "");
+    throw new GeminiUnavailableError(`Gemini query embedding failed (${response.status})${details ? `: ${details}` : ""}`);
+  }
+
+  const payload = (await response.json().catch(() => null)) as unknown;
+  const [embedding] = parseGeminiEmbeddingsPayload(payload);
+  return embedding;
+}
+
+export async function requestGeminiGroundedAnswer(input: {
+  conceptTitle: string;
+  conceptSummary: string;
+  query: string;
+  evidence: string[];
+}): Promise<string> {
+  const { apiKey, endpoint, model } = getGeminiConfig();
+  const response = await fetch(`${endpoint}/${model}:generateContent`, {
+    method: "POST",
+    headers: {
+      "Content-Type": "application/json",
+      "x-goog-api-key": apiKey
+    },
+    body: JSON.stringify({
+      contents: [
+        {
+          role: "user",
+          parts: [
+            {
+              text: buildGroundedAnswerPrompt(input)
+            }
+          ]
+        }
+      ],
+      generationConfig: {
+        temperature: 0.2,
+        responseMimeType: "application/json"
+      }
+    })
+  });
+
+  if (!response.ok) {
+    const details = await response.text().catch(() => "");
+    throw new GeminiUnavailableError(`Gemini grounded answer failed (${response.status})${details ? `: ${details}` : ""}`);
+  }
+
+  const payload = (await response.json().catch(() => null)) as unknown;
+  return parseGroundedAnswerPayload(payload);
 }

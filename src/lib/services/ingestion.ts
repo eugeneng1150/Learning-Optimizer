@@ -84,12 +84,12 @@ export function chunkText(source: SourceDocument): ChunkRecord[] {
     moduleId: source.moduleId,
     userId: source.userId,
     text,
-    embedding: buildEmbedding(text),
+    embedding: buildHeuristicEmbedding(text),
     createdAt: new Date().toISOString()
   }));
 }
 
-function buildEmbedding(text: string): number[] {
+export function buildHeuristicEmbedding(text: string): number[] {
   const values = new Array<number>(8).fill(0);
   const tokens = text.toLowerCase().split(/\W+/).filter(Boolean);
 

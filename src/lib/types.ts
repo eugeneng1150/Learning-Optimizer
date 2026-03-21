@@ -190,3 +190,19 @@ export interface DueConcept {
   reviewState: ReviewState;
   familiarity?: ConceptFamiliarityRecord;
 }
+
+export interface RetrievedChunk {
+  chunkId: string;
+  sourceId: string;
+  moduleId: string;
+  text: string;
+  score: number;
+}
+
+export interface RetrievalAnswer {
+  query: string;
+  answer: string;
+  matches: RetrievedChunk[];
+  processor: SourceProcessorKind;
+  fallbackReason?: string;
+}

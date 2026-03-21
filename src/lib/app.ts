@@ -13,6 +13,7 @@ import {
   SourceIngestionResult,
   SourceProcessorPreference
 } from "@/lib/services/source-ingestion";
+import { queryConceptEvidence } from "@/lib/services/retrieval";
 import {
   AppStore,
   ConceptEdge,
@@ -21,10 +22,12 @@ import {
   ConceptNode,
   ConceptRecord,
   DueConcept,
+  EvidenceRef,
   FamiliarityRating,
   ModuleRecord,
   QuizAttempt,
   QuizItem,
+  RetrievalAnswer,
   ReviewState,
   SourceCreationResult,
   SourceDocument
@@ -143,6 +146,46 @@ function refreshQuizSet(store: AppStore): AppStore {
     quizItems,
     quizAttempts: reconcileQuizAttempts(quizItems, store.quizAttempts)
   };
+}
+
+function toEvidenceRefsFromRetrievedChunks(chunks: RetrievalAnswer["matches"]): EvidenceRef[] {
+  return chunks.map((chunk) => ({
+    id: createId("evidence"),
+    sourceId: chunk.sourceId,
+    chunkId: chunk.chunkId,
+    excerpt: chunk.text.slice(0, 220)
+  }));
+}
+
+async function buildGroundedQuizItems(
+  store: AppStore,
+  concepts: ConceptRecord[],
+  edges: ConceptEdgeRecord[]
+): Promise<QuizItem[]> {
+  const baseItems = generateQuizItems(store.users[0].id, concepts, edges);
+
+  return Promise.all(
+    baseItems.map(async (item) => {
+      const concept = concepts.find((candidate) => candidate.id === item.conceptIds[0]);
+      if (!concept || item.type === "relationship") {
+        return item;
+      }
+
+      const retrieval = await queryConceptEvidence({
+        concept,
+        chunks: store.chunks,
+        query: item.prompt
+      });
+
+      return {
+        ...item,
+        expectedAnswer: retrieval.answer,
+        rubric:
+          "Answer should stay grounded in the retrieved study-note evidence, explain the concept clearly, and avoid unsupported claims.",
+        evidenceRefs: retrieval.matches.length ? toEvidenceRefsFromRetrievedChunks(retrieval.matches) : item.evidenceRefs
+      };
+    })
+  );
 }
 
 function upsertReviewState(reviewStates: ReviewState[], nextState: ReviewState): ReviewState[] {
@@ -469,7 +512,7 @@ export async function generateQuizzes(conceptIds?: string[]): Promise<QuizItem[]
       ? store.concepts.filter((concept) => conceptIds.includes(concept.id))
       : getDefaultQuizConcepts(store);
 
-  const nextQuizItems = generateQuizItems(store.users[0].id, concepts, store.edges);
+  const nextQuizItems = await buildGroundedQuizItems(store, concepts, store.edges);
 
   await saveStore({
     ...store,
@@ -543,4 +586,27 @@ export async function getModuleSimilarity(moduleId: string): Promise<Array<{ mod
   }
 
   return computeModuleSimilarity(moduleRecord, store.modules, store.concepts, store.edges);
+}
+
+export async function answerConceptQuestion(input: {
+  conceptId: string;
+  query: string;
+}): Promise<RetrievalAnswer> {
+  const store = await hydrateStore();
+  const concept = store.concepts.find((item) => item.id === input.conceptId);
+
+  if (!concept) {
+    throw new Error("Concept not found");
+  }
+
+  const query = input.query.trim();
+  if (!query) {
+    throw new Error("Query is required");
+  }
+
+  return queryConceptEvidence({
+    concept,
+    chunks: store.chunks,
+    query
+  });
 }

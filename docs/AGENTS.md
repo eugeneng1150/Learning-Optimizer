@@ -76,14 +76,17 @@ Own concept extraction, graph linking, and graph-facing interactions.
 - module similarity logic
 - graph exploration UI
 - concept editing behavior
+- concept-scoped retrieval UX
 
 ### Primary Files
 
 - `src/lib/services/graph.ts`
+- `src/lib/services/retrieval.ts`
 - `src/components/graph-canvas.tsx`
 - `src/components/concept-panel.tsx`
 - `src/app/api/graph/route.ts`
 - `src/app/api/concepts/[id]/route.ts`
+- `src/app/api/concepts/[id]/evidence/route.ts`
 - `src/app/api/edges/[id]/route.ts`
 - `src/app/api/modules/[id]/similar/route.ts`
 

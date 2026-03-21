@@ -6,6 +6,7 @@ import {
   GeminiSemanticRelationship,
   GeminiUnavailableError,
   isGeminiConfigured,
+  requestGeminiDocumentEmbeddings,
   requestGeminiSemanticExtraction
 } from "@/lib/services/gemini";
 import { chunkText, extractCandidateConcepts } from "@/lib/services/ingestion";
@@ -36,6 +37,42 @@ interface SemanticArtifacts {
   chunks: ChunkRecord[];
   concepts: GeminiSemanticConcept[];
   relationships: GeminiSemanticRelationship[];
+}
+
+async function buildChunksForSource(
+  source: SourceDocument,
+  allowGeminiEmbeddings = true
+): Promise<{
+  chunks: ChunkRecord[];
+  embeddingFallbackReason?: string;
+}> {
+  const chunks = chunkText(source);
+
+  if (!chunks.length || !allowGeminiEmbeddings || !isGeminiConfigured()) {
+    return { chunks };
+  }
+
+  try {
+    const embeddings = await requestGeminiDocumentEmbeddings({
+      texts: chunks.map((chunk) => ({
+        text: chunk.text,
+        title: source.title
+      }))
+    });
+
+    const embeddedChunks = chunks.map((chunk, index) => ({
+      ...chunk,
+      embedding: embeddings[index] ?? chunk.embedding
+    }));
+
+    return { chunks: embeddedChunks };
+  } catch (error) {
+    const message = error instanceof Error ? error.message : "Gemini embeddings failed";
+    return {
+      chunks,
+      embeddingFallbackReason: `Gemini embeddings fallback activated: ${message}`
+    };
+  }
 }
 
 function normalizeValue(value: string): string {
@@ -134,8 +171,12 @@ function dedupeEvidenceRefs(evidenceRefs: ConceptRecord["evidenceRefs"]): Concep
   return Array.from(unique.values()).slice(0, 6);
 }
 
-function mapHeuristicArtifacts(source: SourceDocument, moduleRecord: ModuleRecord): SemanticArtifacts {
-  const chunks = chunkText(source);
+async function mapHeuristicArtifacts(
+  source: SourceDocument,
+  moduleRecord: ModuleRecord,
+  allowGeminiEmbeddings: boolean
+): Promise<SemanticArtifacts> {
+  const { chunks, embeddingFallbackReason } = await buildChunksForSource(source, allowGeminiEmbeddings);
   const concepts = extractCandidateConcepts(chunks, moduleRecord);
   const conceptById = new Map(concepts.map((concept) => [concept.id, concept]));
   const relationships = buildEdges(concepts, chunks, [])
@@ -159,6 +200,7 @@ function mapHeuristicArtifacts(source: SourceDocument, moduleRecord: ModuleRecor
 
   return {
     processor: "heuristic",
+    fallbackReason: embeddingFallbackReason,
     chunks,
     concepts: concepts.map((concept) => ({
       title: concept.title,
@@ -170,14 +212,15 @@ function mapHeuristicArtifacts(source: SourceDocument, moduleRecord: ModuleRecor
   };
 }
 
-function normalizeGeminiArtifacts(
+async function normalizeGeminiArtifacts(
   source: SourceDocument,
   extraction: GeminiSemanticExtraction
-): SemanticArtifacts {
-  const chunks = chunkText(source);
+): Promise<SemanticArtifacts> {
+  const { chunks, embeddingFallbackReason } = await buildChunksForSource(source, true);
 
   return {
     processor: "gemini",
+    fallbackReason: embeddingFallbackReason,
     chunks,
     concepts: extraction.concepts.map((concept) => ({
       title: toTitleCase(concept.title.trim()),
@@ -201,14 +244,14 @@ async function buildSemanticArtifacts(
   preferredProcessor: SourceProcessorPreference
 ): Promise<SemanticArtifacts> {
   if (preferredProcessor === "heuristic") {
-    return mapHeuristicArtifacts(source, moduleRecord);
+    return mapHeuristicArtifacts(source, moduleRecord, false);
   }
 
   if (!isGeminiConfigured()) {
-    const fallback = mapHeuristicArtifacts(source, moduleRecord);
+    const fallback = await mapHeuristicArtifacts(source, moduleRecord, false);
     return {
       ...fallback,
-      fallbackReason: "Gemini skipped because GEMINI_API_KEY is not configured"
+      fallbackReason: joinFallbackReasons("Gemini skipped because GEMINI_API_KEY is not configured", fallback.fallbackReason)
     };
   }
 
@@ -218,7 +261,7 @@ async function buildSemanticArtifacts(
       sourceTitle: source.title,
       sourceContent: source.content
     });
-    const normalized = normalizeGeminiArtifacts(source, extraction);
+    const normalized = await normalizeGeminiArtifacts(source, extraction);
 
     if (!normalized.concepts.length) {
       throw new GeminiUnavailableError("Gemini returned no concepts");
@@ -226,14 +269,19 @@ async function buildSemanticArtifacts(
 
     return normalized;
   } catch (error) {
-    const fallback = mapHeuristicArtifacts(source, moduleRecord);
+    const fallback = await mapHeuristicArtifacts(source, moduleRecord, false);
     const message = error instanceof Error ? error.message : "Gemini request failed";
 
     return {
       ...fallback,
-      fallbackReason: `Gemini fallback activated: ${message}`
+      fallbackReason: joinFallbackReasons(`Gemini fallback activated: ${message}`, fallback.fallbackReason)
     };
   }
+}
+
+function joinFallbackReasons(...values: Array<string | undefined>): string | undefined {
+  const parts = values.map((value) => value?.trim()).filter(Boolean);
+  return parts.length ? parts.join(" ") : undefined;
 }
 
 function materializeConcepts(

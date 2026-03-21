@@ -25,9 +25,9 @@ The repo is functional and builds successfully.
 Verified recently:
 
 - `npm test`
-- `npm run build`
+- `DATABASE_URL= npm run build`
 
-The current product shell still reflects the older workspace-first prototype. The intended next direction is a guided post-login flow:
+The current product shell is already a guided post-login flow:
 
 1. upload notes
 2. generate a mindmap
@@ -35,15 +35,24 @@ The current product shell still reflects the older workspace-first prototype. Th
 4. generate quizzes
 5. continue review
 
+The repo now also includes a first RAG slice:
+
+1. active ingest can request Gemini chunk embeddings
+2. stored chunks can be queried semantically
+3. concept detail can answer grounded questions from retrieved notes
+4. explicit quiz regeneration can use retrieved chunk grounding
+
 ## What Is Implemented
 
 ### Frontend
 
-- dashboard shell with separate workspaces
-- graph workspace
+- guided dashboard shell
+- interactive graph workspace
 - study queue
 - quiz workspace
 - ingest workspace
+- server-side file/PDF upload path
+- retrieval-backed concept detail
 - reminder settings panel
 
 ### Backend / App Layer
@@ -51,11 +60,15 @@ The current product shell still reflects the older workspace-first prototype. Th
 - module creation
 - source creation
 - concept extraction
+- Gemini chunk embeddings on active ingest
+- server-side PDF text extraction
 - graph edge generation
 - module similarity
 - review scheduling
 - quiz generation
+- retrieval-backed explicit quiz regeneration
 - quiz scoring and mastery updates
+- grounded concept retrieval answers
 - reminder settings read/write
 
 ### API Routes
@@ -64,6 +77,7 @@ The current product shell still reflects the older workspace-first prototype. Th
 - `/api/sources`
 - `/api/graph`
 - `/api/concepts/[id]`
+- `/api/concepts/[id]/evidence`
 - `/api/edges/[id]`
 - `/api/reviews/due`
 - `/api/quizzes/generate`
@@ -128,12 +142,13 @@ This is a real persistence upgrade, but the app orchestration layer has not yet 
 
 - concept extraction is still heuristic
 - text ingestion is still basic
-- real PDF parsing is not implemented yet; current ingest UI only supports pasted text and browser-loaded `.txt` / `.md` content
+- PDF ingestion is now limited to text-based PDFs and still needs better extraction hardening
+- retrieval now powers concept detail and explicit quiz regeneration, but not a broader search surface yet
 - persistence is only partially productionized
 - the app layer still rewrites the full normalized store snapshot on save
 - there is no real queue/worker system yet
 - auth is still effectively demo-level
-- the UI is still workspace-heavy and visually cluttered compared with the intended guided journey
+- graph layout now persists in browser workspace state, but graph curation edits are not yet durable app state
 
 ## Planned Product Direction
 
@@ -142,7 +157,7 @@ These are the product decisions currently preferred for upcoming work:
 - treat auth as a future wrapper only; design the main journey post-login
 - make the mindmap the first success screen after notes are processed
 - add a per-concept quick familiarity rating before quiz generation
-- use Gemini as the primary semantic ingestion layer for uploaded notes
+- use Gemini as the primary semantic ingestion and retrieval layer for uploaded notes
 - replace scattered workspace actions with one clearer stage-based flow
 
 The intended user journey is:
@@ -151,56 +166,42 @@ The intended user journey is:
 2. process notes with Gemini
 3. inspect the generated mindmap
 4. rate familiarity on concepts
-5. generate quizzes from that map
-6. continue review and reminders
+5. ask grounded questions against the map and stored evidence
+6. generate quizzes from that map
+7. continue review and reminders
 
 ## PDF Ingestion Context
 
-The domain model already allows `SourceDocument.kind` to be `"pdf"`, but the repo does not yet have a real PDF extraction pipeline.
+The repo now has a real v1 PDF ingestion path.
 
 Current reality:
 
-- `src/components/intake-panel.tsx` supports pasted text and browser-loaded `.txt` / `.md`
-- `src/app/api/sources/route.ts` expects text content, not raw PDF upload handling
-- `src/lib/services/ingestion.ts` starts from plain text and does chunking/concept extraction only after text already exists
+- `src/components/intake-panel.tsx` supports pasted text plus `.txt`, `.md`, and `.pdf` uploads
+- `src/app/api/sources/route.ts` accepts both JSON text ingest and `multipart/form-data`
+- `src/lib/services/pdf.ts` extracts text server-side before the source enters the existing ingest flow
 
-What a real v1 PDF path should do:
-
-1. accept a raw PDF file upload
-2. extract text from the PDF on the server
-3. lightly normalize the extracted text
-4. pass the cleaned text into the existing source ingestion flow
-
-Recommended architecture:
-
-- add a dedicated PDF parsing helper, likely under `src/lib/services/`
-- keep parsing/extraction separate from `src/lib/app.ts`
-- keep route handlers thin and let `app.ts` orchestrate upload -> extract -> create source -> ingest
-
-Recommended v1 scope:
+Current scope:
 
 - text-based PDFs only
 - no OCR
-- no advanced layout reconstruction beyond light cleanup
+- light cleanup only, not advanced layout reconstruction
 
-Main follow-up files for a future PDF ingestion task:
+Main follow-up files for improving PDF ingestion:
 
 - `src/components/intake-panel.tsx`
-- `src/app/api/sources/route.ts` or a dedicated PDF upload route
-- `src/lib/app.ts`
-- `src/lib/services/ingestion.ts`
-- likely a new `src/lib/services/pdf.ts`
+- `src/app/api/sources/route.ts`
+- `src/lib/services/pdf.ts`
 
 ## Recommended Next Task
 
 The next serious engineering step is:
 
-1. redesign the shell into a guided flow instead of separate workspaces
-2. add Gemini-backed ingestion for uploaded notes and map generation
-3. add user-specific per-concept familiarity rating before quiz generation
+1. add real file and PDF ingestion
+2. extend the new retrieval layer beyond explicit quiz regeneration into broader note search
+3. persist graph curation edits in durable app state
 4. then split normalized persistence into repository-style access instead of whole-store rewrites
 
-This is the cleanest next move because the current UI and ingestion flow no longer match the intended product experience, and the persistence refactor will be easier to shape once the product flow is clearer.
+This is the cleanest next move because the guided journey, server-side file ingest, first retrieval slice, and browser-persisted graph workspace already exist. The remaining work is about making those pieces production-grade.
 
 ## Parallelization Context
 
@@ -223,7 +224,7 @@ Use a prompt like this:
 Read docs/HANDOFF.md, README.md, docs/PROJECT_OVERVIEW.md, and docs/AGENTS.md first.
 This repo is a Learning Optimizer app.
 Current state: build passes, reminder settings work, normalized Postgres tables exist, and bootstrap/import tooling exists.
-Next task: redesign the app into a guided flow, add Gemini-backed ingestion, and introduce per-concept familiarity rating before quizzes.
+Next task: harden PDF ingest, extend retrieval into broader search, and persist graph curation edits in durable app state.
 ```
 
 ## Maintenance Rule
