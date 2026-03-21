@@ -11,12 +11,23 @@ import { QuizPanel } from "@/components/quiz-panel";
 import { ReminderPanel } from "@/components/reminder-panel";
 import { FamiliarityStage } from "@/components/familiarity-stage";
 import { SourceCreationResult } from "@/lib/types";
+import { buildModuleSummaries } from "@/lib/module-summaries";
+import { LibraryGraph } from "@/components/library-graph";
 
 interface DashboardShellProps {
   initialSnapshot: DashboardSnapshot;
 }
 
 type StageId = "upload" | "map" | "familiarity" | "quiz" | "review";
+type MapMode = "library" | "concepts";
+
+interface QuizScopeState {
+  sourceId?: string;
+  sourceTitle?: string;
+  moduleTitle?: string;
+  title: string;
+  description: string;
+}
 
 const STAGES: Array<{
   id: StageId;
@@ -60,21 +71,34 @@ export function DashboardShell({ initialSnapshot }: DashboardShellProps) {
   const [snapshot, setSnapshot] = useState(initialSnapshot);
   const [activeStage, setActiveStage] = useState<StageId>(() => getInitialStage(initialSnapshot));
   const [selectedConceptId, setSelectedConceptId] = useState(initialSnapshot.graph.nodes[0]?.id);
+  const [selectedModuleId, setSelectedModuleId] = useState(initialSnapshot.modules[0]?.id);
+  const [mapMode, setMapMode] = useState<MapMode>("library");
   const [lastAction, setLastAction] = useState<string | null>(
     initialSnapshot.graph.nodes.length ? "Notes are already processed. Start from the mindmap." : null
   );
   const [lastIngestionResult, setLastIngestionResult] = useState<SourceCreationResult | null>(null);
+  const [quizScope, setQuizScope] = useState<QuizScopeState>({
+    title: "Mixed recall testing",
+    description: "Generate a mixed quiz from the current concept map."
+  });
   const [ratedConceptIds, setRatedConceptIds] = useState<Set<string>>(
     () => new Set(initialSnapshot.conceptRecords.filter((concept) => concept.status !== "active").map((concept) => concept.id))
   );
   const [isRefreshing, startTransition] = useTransition();
 
+  const moduleSummaries = buildModuleSummaries(snapshot.modules, snapshot.sources);
+  const selectedModuleSummary =
+    moduleSummaries.find((summary) => summary.module.id === selectedModuleId) ?? moduleSummaries[0];
   const selectedConcept = snapshot.conceptRecords.find((concept) => concept.id === selectedConceptId);
   const selectedFamiliarity = snapshot.conceptFamiliarities.find((record) => record.conceptId === selectedConceptId);
   const relatedEdges = snapshot.edgeRecords.filter(
     (edge) => edge.sourceConceptId === selectedConceptId || edge.targetConceptId === selectedConceptId
   );
+  const selectedModuleConceptCount = selectedModuleSummary
+    ? snapshot.conceptRecords.filter((concept) => concept.moduleIds.includes(selectedModuleSummary.module.id)).length
+    : 0;
   const hasSources = snapshot.sources.length > 0;
+  const hasModules = snapshot.modules.length > 0;
   const hasMap = snapshot.graph.nodes.length > 0;
   const ratedCount = snapshot.conceptRecords.filter((concept) => ratedConceptIds.has(concept.id)).length;
   const currentStage = STAGES.find((stage) => stage.id === activeStage)!;
@@ -91,11 +115,14 @@ export function DashboardShell({ initialSnapshot }: DashboardShellProps) {
     setSnapshot(data);
   }
 
-  async function handleGenerateQuiz(conceptIds?: string[]) {
+  async function handleGenerateQuiz(input?: { conceptIds?: string[]; sourceId?: string; sourceTitle?: string; moduleTitle?: string }) {
     const response = await fetch("/api/quizzes/generate", {
       method: "POST",
       headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ conceptIds })
+      body: JSON.stringify({
+        conceptIds: input?.conceptIds,
+        sourceId: input?.sourceId
+      })
     });
     const quizzes = (await response.json()) as DashboardSnapshot["quizzes"];
     setSnapshot((current) => ({
@@ -103,11 +130,28 @@ export function DashboardShell({ initialSnapshot }: DashboardShellProps) {
       quizzes
     }));
     await refreshSnapshot();
-    setLastAction(
-      conceptIds?.length
-        ? "Generated a quiz round for a focused concept."
-        : "Generated a fresh quiz set from the current concept map."
-    );
+    if (input?.sourceId && input.sourceTitle) {
+      setQuizScope({
+        sourceId: input.sourceId,
+        sourceTitle: input.sourceTitle,
+        moduleTitle: input.moduleTitle,
+        title: `Quiz from ${input.sourceTitle}`,
+        description: input.moduleTitle
+          ? `This round is grounded in notes from ${input.moduleTitle}.`
+          : "This round is grounded in one uploaded note."
+      });
+      setLastAction(`Built a quiz from ${input.sourceTitle}.`);
+    } else {
+      setQuizScope({
+        title: "Mixed recall testing",
+        description: "Generate a mixed quiz from the current concept map."
+      });
+      setLastAction(
+        input?.conceptIds?.length
+          ? "Generated a quiz round for a focused concept."
+          : "Generated a fresh quiz set from the current concept map."
+      );
+    }
     setActiveStage("quiz");
   }
 
@@ -127,6 +171,14 @@ export function DashboardShell({ initialSnapshot }: DashboardShellProps) {
 
     setSelectedConceptId(snapshot.graph.nodes[0]?.id);
   }, [selectedConceptId, snapshot.graph.nodes]);
+
+  useEffect(() => {
+    if (selectedModuleId && snapshot.modules.some((module) => module.id === selectedModuleId)) {
+      return;
+    }
+
+    setSelectedModuleId(snapshot.modules[0]?.id);
+  }, [selectedModuleId, snapshot.modules]);
 
   useEffect(() => {
     setRatedConceptIds((current) => {
@@ -165,7 +217,7 @@ export function DashboardShell({ initialSnapshot }: DashboardShellProps) {
   }
 
   function handleOpenStage(stageId: StageId) {
-    if (!isStageAvailable(stageId, hasSources, hasMap)) {
+    if (!isStageAvailable(stageId, hasModules, hasSources, hasMap)) {
       return;
     }
 
@@ -174,14 +226,14 @@ export function DashboardShell({ initialSnapshot }: DashboardShellProps) {
 
   function handleSourceCreated(result: SourceCreationResult) {
     setLastIngestionResult(result);
+    setSelectedModuleId(result.source.moduleId);
     setLastAction(describeSourceCreation(result));
-    setActiveStage("map");
   }
 
   const stageCards = STAGES.map((stage, index) => ({
     ...stage,
     index,
-    available: isStageAvailable(stage.id, hasSources, hasMap),
+    available: isStageAvailable(stage.id, hasModules, hasSources, hasMap),
     badge: getStageBadge(stage.id, snapshot, ratedCount),
     current: stage.id === activeStage
   }));
@@ -213,9 +265,9 @@ export function DashboardShell({ initialSnapshot }: DashboardShellProps) {
             <span>{lastAction ?? currentStage.description}</span>
           </div>
           <div className="hero-actions">
-            {activeStage === "upload" && hasMap ? (
+            {activeStage === "upload" && (hasModules || hasMap) ? (
               <button className="action-button" type="button" onClick={() => handleOpenStage("map")}>
-                Open mindmap
+                Open map
               </button>
             ) : null}
             {activeStage === "map" ? (
@@ -292,14 +344,17 @@ export function DashboardShell({ initialSnapshot }: DashboardShellProps) {
                 <p className="eyebrow">Ready so far</p>
                 <h2>Subjects in focus</h2>
               </div>
-              <span className="panel-badge">{snapshot.sources.length} uploads</span>
+              <span className="panel-badge">{snapshot.sources.length} notes</span>
             </div>
             <ul className="compact-list">
-              {snapshot.modules.length ? (
-                snapshot.modules.map((moduleRecord) => (
-                  <li key={moduleRecord.id}>
-                    <strong>{moduleRecord.code ? `${moduleRecord.code} · ` : ""}{moduleRecord.title}</strong>
-                    <span>{moduleRecord.description}</span>
+              {moduleSummaries.length ? (
+                moduleSummaries.map((summary) => (
+                  <li key={summary.module.id}>
+                    <strong>{summary.module.code ? `${summary.module.code} · ` : ""}{summary.module.title}</strong>
+                    <span>
+                      {summary.noteCount} notes
+                      {summary.latestSource ? ` · latest: ${summary.latestSource.title}` : " · no notes yet"}
+                    </span>
                   </li>
                 ))
               ) : (
@@ -315,7 +370,69 @@ export function DashboardShell({ initialSnapshot }: DashboardShellProps) {
 
       {activeStage === "map" ? (
         <section className="single-column guided-stage-grid">
-          {selectedConcept ? (
+          <section className="panel selection-summary">
+            <div className="panel-header">
+              <div>
+                <p className="eyebrow">Map mode</p>
+                <h2>{mapMode === "library" ? "Subject and note library" : "Concept relationships"}</h2>
+                <p className="stage-copy">
+                  {mapMode === "library"
+                    ? "Subjects appear immediately. Expand them into notes, then open note-scoped quizzes from there."
+                    : "Inspect the extracted concept graph and continue into familiarity once the map looks right."}
+                </p>
+              </div>
+              <div className="mode-switch">
+                <button
+                  className={`nav-button ${mapMode === "library" ? "nav-button-active" : ""}`}
+                  type="button"
+                  onClick={() => setMapMode("library")}
+                >
+                  Library
+                </button>
+                <button
+                  className={`nav-button ${mapMode === "concepts" ? "nav-button-active" : ""}`}
+                  type="button"
+                  onClick={() => setMapMode("concepts")}
+                >
+                  Concepts
+                </button>
+              </div>
+            </div>
+            <ul className="fact-row">
+              {mapMode === "library" ? (
+                <>
+                  <li>
+                    <strong>{snapshot.modules.length}</strong>
+                    <span>subjects</span>
+                  </li>
+                  <li>
+                    <strong>{snapshot.sources.length}</strong>
+                    <span>notes</span>
+                  </li>
+                  <li>
+                    <strong>{selectedModuleSummary ? selectedModuleConceptCount : 0}</strong>
+                    <span>concepts in subject</span>
+                  </li>
+                </>
+              ) : (
+                <>
+                  <li>
+                    <strong>{snapshot.graph.nodes.length}</strong>
+                    <span>concepts</span>
+                  </li>
+                  <li>
+                    <strong>{snapshot.edgeRecords.length}</strong>
+                    <span>links</span>
+                  </li>
+                  <li>
+                    <strong>{selectedConcept ? "inspect a node" : "waiting"}</strong>
+                    <span>selected</span>
+                  </li>
+                </>
+              )}
+            </ul>
+          </section>
+          {mapMode === "concepts" && selectedConcept ? (
             <section className="panel selection-summary">
               <div>
                 <p className="eyebrow">Selected concept</p>
@@ -338,12 +455,30 @@ export function DashboardShell({ initialSnapshot }: DashboardShellProps) {
               </ul>
             </section>
           ) : null}
-          <GraphCanvas
-            nodes={snapshot.graph.nodes}
-            edges={snapshot.graph.edges}
-            selectedConceptId={selectedConceptId}
-            onSelectConcept={setSelectedConceptId}
-          />
+          {mapMode === "library" ? (
+            <LibraryGraph
+              modules={snapshot.modules}
+              sources={snapshot.sources}
+              selectedModuleId={selectedModuleId}
+              selectedSourceId={lastIngestionResult?.source.id}
+              onSelectModule={setSelectedModuleId}
+              onOpenSourceQuiz={(source) => {
+                const moduleTitle = snapshot.modules.find((module) => module.id === source.moduleId)?.title;
+                void handleGenerateQuiz({
+                  sourceId: source.id,
+                  sourceTitle: source.title,
+                  moduleTitle
+                });
+              }}
+            />
+          ) : (
+            <GraphCanvas
+              nodes={snapshot.graph.nodes}
+              edges={snapshot.graph.edges}
+              selectedConceptId={selectedConceptId}
+              onSelectConcept={setSelectedConceptId}
+            />
+          )}
           {lastIngestionResult ? (
             <section className="panel stage-support">
               <div className="panel-header">
@@ -364,12 +499,39 @@ export function DashboardShell({ initialSnapshot }: DashboardShellProps) {
               {lastIngestionResult.fallbackReason ? <p className="status-text">{lastIngestionResult.fallbackReason}</p> : null}
             </section>
           ) : null}
-          <ConceptPanel
-            concept={selectedConcept}
-            modules={snapshot.modules}
-            relatedEdges={relatedEdges}
-            onMutate={refreshInTransition}
-          />
+          {mapMode === "library" ? (
+            <section className="panel stage-support">
+              <div className="panel-header">
+                <div>
+                  <p className="eyebrow">Selected subject</p>
+                  <h2>{selectedModuleSummary?.module.title ?? "No subject selected"}</h2>
+                </div>
+                <span className="panel-badge">{selectedModuleSummary?.noteCount ?? 0} notes</span>
+              </div>
+              <ul className="compact-list">
+                {selectedModuleSummary?.sources.length ? (
+                  selectedModuleSummary.sources.map((source) => (
+                    <li key={source.id}>
+                      <strong>{source.title}</strong>
+                      <span>Open this note from the library graph to build a quiz from it.</span>
+                    </li>
+                  ))
+                ) : (
+                  <li>
+                    <strong>No notes in this subject yet</strong>
+                    <span>Upload the first note, then expand the subject node to reveal it in the map.</span>
+                  </li>
+                )}
+              </ul>
+            </section>
+          ) : (
+            <ConceptPanel
+              concept={selectedConcept}
+              modules={snapshot.modules}
+              relatedEdges={relatedEdges}
+              onMutate={refreshInTransition}
+            />
+          )}
         </section>
       ) : null}
 
@@ -398,7 +560,19 @@ export function DashboardShell({ initialSnapshot }: DashboardShellProps) {
         <section className="single-column guided-stage-grid">
           <QuizPanel
             quizzes={snapshot.quizzes}
-            onGenerateQuiz={() => handleGenerateQuiz()}
+            title={quizScope.title}
+            description={quizScope.description}
+            onGenerateQuiz={() =>
+              handleGenerateQuiz(
+                quizScope.sourceId
+                  ? {
+                      sourceId: quizScope.sourceId,
+                      sourceTitle: quizScope.sourceTitle,
+                      moduleTitle: quizScope.moduleTitle
+                    }
+                  : undefined
+              )
+            }
             onRefresh={refreshInTransition}
           />
           <section className="panel stage-support">
@@ -425,7 +599,7 @@ export function DashboardShell({ initialSnapshot }: DashboardShellProps) {
 
       {activeStage === "review" ? (
         <section className="single-column guided-stage-grid">
-          <StudyQueue due={snapshot.due} onGenerateQuiz={handleGenerateQuiz} />
+          <StudyQueue due={snapshot.due} onGenerateQuiz={(conceptIds) => handleGenerateQuiz({ conceptIds })} />
           <ReminderPanel reminders={snapshot.reminders} initialSettings={snapshot.reminderSettings} />
         </section>
       ) : null}
@@ -447,12 +621,12 @@ function getInitialStage(snapshot: DashboardSnapshot): StageId {
   return "upload";
 }
 
-function isStageAvailable(stageId: StageId, hasSources: boolean, hasMap: boolean) {
+function isStageAvailable(stageId: StageId, hasModules: boolean, hasSources: boolean, hasMap: boolean) {
   switch (stageId) {
     case "upload":
       return true;
     case "map":
-      return hasSources || hasMap;
+      return hasModules || hasSources || hasMap;
     case "familiarity":
     case "quiz":
     case "review":
@@ -467,7 +641,7 @@ function getStageBadge(stageId: StageId, snapshot: DashboardSnapshot, ratedCount
     case "upload":
       return snapshot.sources.length ? `${snapshot.sources.length} processed` : "Start here";
     case "map":
-      return snapshot.graph.nodes.length ? `${snapshot.graph.nodes.length} concepts` : "Waiting";
+      return snapshot.modules.length ? `${snapshot.modules.length} subjects` : "Waiting";
     case "familiarity":
       return snapshot.graph.nodes.length ? `${ratedCount}/${snapshot.conceptRecords.length} triaged` : "Waiting";
     case "quiz":
@@ -527,14 +701,14 @@ function getStageFacts(
     case "upload":
       return [
         { label: "subjects", value: snapshot.modules.length },
-        { label: "uploads", value: snapshot.sources.length },
-        { label: "next screen", value: "mindmap" }
+        { label: "notes", value: snapshot.sources.length },
+        { label: "next screen", value: "library map" }
       ];
     case "map":
       return [
-        { label: "concepts", value: snapshot.graph.nodes.length },
-        { label: "links", value: snapshot.edgeRecords.length },
-        { label: "selected", value: snapshot.graph.nodes.length ? "inspect a node" : "waiting" }
+        { label: "subjects", value: snapshot.modules.length },
+        { label: "notes", value: snapshot.sources.length },
+        { label: "concepts", value: snapshot.graph.nodes.length }
       ];
     case "familiarity":
       return [

@@ -160,7 +160,8 @@ function toEvidenceRefsFromRetrievedChunks(chunks: RetrievalAnswer["matches"]): 
 async function buildGroundedQuizItems(
   store: AppStore,
   concepts: ConceptRecord[],
-  edges: ConceptEdgeRecord[]
+  edges: ConceptEdgeRecord[],
+  options?: { sourceId?: string }
 ): Promise<QuizItem[]> {
   const baseItems = generateQuizItems(store.users[0].id, concepts, edges);
 
@@ -174,7 +175,8 @@ async function buildGroundedQuizItems(
       const retrieval = await queryConceptEvidence({
         concept,
         chunks: store.chunks,
-        query: item.prompt
+        query: item.prompt,
+        restrictSourceId: options?.sourceId
       });
 
       return {
@@ -505,14 +507,18 @@ export async function updateReminderSettings(input: {
   return nextSettings;
 }
 
-export async function generateQuizzes(conceptIds?: string[]): Promise<QuizItem[]> {
+export async function generateQuizzes(input?: string[] | { conceptIds?: string[]; sourceId?: string }): Promise<QuizItem[]> {
   const store = await hydrateStore();
+  const conceptIds = Array.isArray(input) ? input : input?.conceptIds;
+  const sourceId = Array.isArray(input) ? undefined : input?.sourceId;
   const concepts =
-    conceptIds && conceptIds.length
+    sourceId
+      ? store.concepts.filter((concept) => concept.sourceIds.includes(sourceId))
+      : conceptIds && conceptIds.length
       ? store.concepts.filter((concept) => conceptIds.includes(concept.id))
       : getDefaultQuizConcepts(store);
 
-  const nextQuizItems = await buildGroundedQuizItems(store, concepts, store.edges);
+  const nextQuizItems = await buildGroundedQuizItems(store, concepts, store.edges, { sourceId });
 
   await saveStore({
     ...store,

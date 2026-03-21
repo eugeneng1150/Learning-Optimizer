@@ -34,6 +34,7 @@ Own how raw learning material enters the system.
 - module creation flow
 - source ingestion flow
 - upload and parsing support
+- subject-level upload feedback
 - chunking strategy
 - source normalization
 
@@ -55,6 +56,7 @@ Own how raw learning material enters the system.
 - normalized sources
 - chunks
 - ingestion-ready content for graph extraction
+- subject progress metadata for the upload UI
 
 ### Avoid Overlap With
 
@@ -75,6 +77,8 @@ Own concept extraction, graph linking, and graph-facing interactions.
 - edge typing
 - module similarity logic
 - graph exploration UI
+- library graph UI for subjects and notes
+- library graph scaling behavior such as overflow nodes and dense-branch handling
 - concept editing behavior
 - concept-scoped retrieval UX
 
@@ -98,6 +102,7 @@ Own concept extraction, graph linking, and graph-facing interactions.
 ### Outputs
 
 - concept nodes
+- subject and note graph metadata
 - graph edges
 - graph metadata for the UI
 
@@ -153,6 +158,7 @@ Own testing of understanding.
 - answer scoring
 - quiz session UX
 - relationship-question quality
+- note-scoped quiz generation
 
 ### Primary Files
 

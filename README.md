@@ -12,7 +12,7 @@ The current prototype focuses on four core loops:
 The intended product direction is a guided flow rather than a set of separate workspaces:
 
 1. upload notes
-2. generate a mindmap
+2. inspect the map in either library or concept mode
 3. rate familiarity per concept
 4. generate quizzes
 5. continue review
@@ -26,8 +26,12 @@ In the current implementation, users can:
 - create modules
 - add text-based learning sources
 - upload `.txt`, `.md`, and text-based `.pdf` files
+- stay in upload after ingest and see per-subject note count plus latest-note metadata
+- explore subjects and notes in a library graph
 - generate concept nodes and evidence-backed edges
-- inspect related concepts in a graph view
+- inspect related concepts in an interactive concept graph
+- jump from a note node into a note-scoped quiz
+- ask grounded questions against retrieved notes from concept detail
 - review due concepts from a spaced-repetition queue
 - answer mixed recall quiz prompts
 - store reminder settings for in-app and email review nudges
@@ -35,7 +39,10 @@ In the current implementation, users can:
 Current UX direction:
 
 - keep the app as a guided flow with one primary task per stage
-- use the mindmap as the first success screen after ingestion
+- keep upload feedback in place instead of auto-jumping stages after every ingest
+- show per-subject note progress directly in the upload stage
+- make the map stage support both a library graph and a concept graph
+- keep the library graph radial and interactive, with spring drag and overflow handling for large subjects
 - capture per-concept familiarity before quiz generation
 - add retrieval-backed evidence surfaces on top of the stored graph and chunks
 
@@ -43,7 +50,22 @@ Current UX direction:
 
 ### 1. Graph Workspace
 
-The graph is the central knowledge view. Concepts are extracted from ingested material, linked together, and shown as a network.
+The graph is now a two-mode workspace rather than a single concept-only canvas.
+
+- `Library` mode for subject and note exploration
+- `Concepts` mode for concept relationships extracted from notes
+
+In library mode:
+
+- each subject appears as a node even before notes are ingested
+- the subject node shows a note-count badge, including `0`
+- expanding a subject reveals note nodes such as `L16`
+- selecting a note becomes an entry point into note-scoped quiz generation
+- subject and note nodes can be dragged with spring follow-through
+- edges route from node boundaries and fan outward to reduce overlap
+- large subjects render a capped number of visible notes plus a `+N more` overflow node
+
+In concept mode, concepts are extracted from ingested material, linked together, and shown as a network.
 
 Each concept can expose:
 
@@ -78,12 +100,17 @@ The current quiz types are:
 
 Users can create modules and add source content that gets chunked and processed into concepts and edges.
 
-The current prototype supports text ingestion. The planned direction is Gemini-backed document understanding, where uploaded notes are processed into concepts, relationships, summaries, and evidence before the app persists the resulting graph.
-
-Today, the active implementation is still text-first and prototype-grade, but Gemini can now power both semantic extraction and chunk embeddings when it is configured.
+The current prototype supports pasted text plus server-side extraction for text-based PDFs. Gemini can now power both semantic extraction and chunk embeddings when it is configured.
 
 The ingestion service now prefers Gemini-backed semantic extraction when `GEMINI_API_KEY` is configured, and falls
 back to the existing heuristic chunk-and-extract path when Gemini is unavailable or returns unusable output.
+
+Current ingest UX behavior:
+
+- stay in the upload stage after processing notes
+- show per-subject note count and latest-note metadata immediately
+- use the map stage as a place to explore the resulting subject/note or concept structure, not as an automatic redirect
+- keep PDF support limited to text-based PDFs only; scanned or image-only PDFs still need OCR
 
 ### 5. Retrieval Workspace
 
@@ -94,6 +121,7 @@ Current retrieval capabilities:
 - Gemini-backed chunk embeddings during active ingest
 - semantic retrieval over stored chunks
 - grounded concept questions in the concept detail panel
+- note-scoped quiz generation from library graph note selection
 - retrieval-backed quiz regeneration for concept prompts
 - fallback to heuristic embeddings and answer assembly when Gemini is unavailable
 
@@ -128,6 +156,7 @@ src/
   components/
     dashboard-shell.tsx
     graph-canvas.tsx
+    library-graph.tsx
     intake-panel.tsx
     concept-panel.tsx
     study-queue.tsx
@@ -135,12 +164,15 @@ src/
     reminder-panel.tsx
   lib/
     app.ts
+    module-summaries.ts
     store.ts
     types.ts
     seed.ts
     services/
       ingestion.ts
       graph.ts
+      retrieval.ts
+      pdf.ts
       review.ts
       quiz.ts
   tests/

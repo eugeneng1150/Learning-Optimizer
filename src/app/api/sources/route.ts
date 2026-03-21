@@ -74,6 +74,8 @@ export async function POST(request: Request) {
     return ok(result, 201);
   } catch (error) {
     const message = error instanceof Error ? error.message : "Unable to create source";
-    return badRequest(message, 404);
+    const status =
+      /module not found/i.test(message) ? 404 : /pdf|content are required|file is required|supported/i.test(message) ? 422 : 400;
+    return badRequest(message, status);
   }
 }

@@ -30,7 +30,7 @@ Verified recently:
 The current product shell is already a guided post-login flow:
 
 1. upload notes
-2. generate a mindmap
+2. inspect the map
 3. rate familiarity per concept
 4. generate quizzes
 5. continue review
@@ -42,12 +42,18 @@ The repo now also includes a first RAG slice:
 3. concept detail can answer grounded questions from retrieved notes
 4. explicit quiz regeneration can use retrieved chunk grounding
 
+The map stage now has two shipped modes:
+
+1. `Library` for subjects and notes
+2. `Concepts` for concept relationships
+
 ## What Is Implemented
 
 ### Frontend
 
 - guided dashboard shell
-- interactive graph workspace
+- interactive concept graph workspace
+- interactive library graph with radial subject expansion
 - study queue
 - quiz workspace
 - ingest workspace
@@ -64,6 +70,7 @@ The repo now also includes a first RAG slice:
 - server-side PDF text extraction
 - graph edge generation
 - module similarity
+- note-scoped quiz generation from library graph note selection
 - review scheduling
 - quiz generation
 - retrieval-backed explicit quiz regeneration
@@ -127,6 +134,8 @@ This is a real persistence upgrade, but the app orchestration layer has not yet 
 
 - `src/lib/services/ingestion.ts`
 - `src/lib/services/graph.ts`
+- `src/lib/services/pdf.ts`
+- `src/lib/services/retrieval.ts`
 - `src/lib/services/review.ts`
 - `src/lib/services/quiz.ts`
 
@@ -134,6 +143,7 @@ This is a real persistence upgrade, but the app orchestration layer has not yet 
 
 - `src/components/dashboard-shell.tsx`
 - `src/components/graph-canvas.tsx`
+- `src/components/library-graph.tsx`
 - `src/components/intake-panel.tsx`
 - `src/components/quiz-panel.tsx`
 - `src/components/reminder-panel.tsx`
@@ -142,8 +152,10 @@ This is a real persistence upgrade, but the app orchestration layer has not yet 
 
 - concept extraction is still heuristic
 - text ingestion is still basic
-- PDF ingestion is now limited to text-based PDFs and still needs better extraction hardening
+- PDF ingestion is now limited to text-based PDFs and still needs OCR plus better extraction hardening
 - retrieval now powers concept detail and explicit quiz regeneration, but not a broader search surface yet
+- the upload stage is clearer now, but success feedback can still be made stronger
+- the library graph is live, but very dense subjects still need more advanced clustering/search
 - persistence is only partially productionized
 - the app layer still rewrites the full normalized store snapshot on save
 - there is no real queue/worker system yet
@@ -155,7 +167,10 @@ This is a real persistence upgrade, but the app orchestration layer has not yet 
 These are the product decisions currently preferred for upcoming work:
 
 - treat auth as a future wrapper only; design the main journey post-login
-- make the mindmap the first success screen after notes are processed
+- keep the user in upload after processing notes and show subject-level progress there
+- keep the map split into `Library` and `Concepts` modes
+- keep subjects as first-class nodes and notes as expandable children
+- keep note-node selection as a note-scoped quiz entry point
 - add a per-concept quick familiarity rating before quiz generation
 - use Gemini as the primary semantic ingestion and retrieval layer for uploaded notes
 - replace scattered workspace actions with one clearer stage-based flow
@@ -163,12 +178,13 @@ These are the product decisions currently preferred for upcoming work:
 The intended user journey is:
 
 1. upload notes
-2. process notes with Gemini
-3. inspect the generated mindmap
-4. rate familiarity on concepts
-5. ask grounded questions against the map and stored evidence
-6. generate quizzes from that map
-7. continue review and reminders
+2. stay in upload and confirm subject-level ingest progress
+3. open the map in `Library` or `Concepts` mode
+4. expand subjects into notes or inspect the concept graph
+5. jump into note-scoped or mixed quizzes
+6. rate familiarity on concepts
+7. ask grounded questions against the map and stored evidence
+8. continue review and reminders
 
 ## PDF Ingestion Context
 
@@ -196,12 +212,12 @@ Main follow-up files for improving PDF ingestion:
 
 The next serious engineering step is:
 
-1. add real file and PDF ingestion
-2. extend the new retrieval layer beyond explicit quiz regeneration into broader note search
-3. persist graph curation edits in durable app state
-4. then split normalized persistence into repository-style access instead of whole-store rewrites
+1. extend retrieval into broader note search or more study surfaces
+2. add OCR or stronger PDF support beyond text-based PDFs
+3. keep hardening persistence and background work
+4. then add auth and user isolation
 
-This is the cleanest next move because the guided journey, server-side file ingest, first retrieval slice, and browser-persisted graph workspace already exist. The remaining work is about making those pieces production-grade.
+The repo already has the guided shell, upload feedback, library graph, note-scoped quiz entry, and first retrieval slice. The next gap is depth and production hardening.
 
 ## Parallelization Context
 
@@ -224,7 +240,7 @@ Use a prompt like this:
 Read docs/HANDOFF.md, README.md, docs/PROJECT_OVERVIEW.md, and docs/AGENTS.md first.
 This repo is a Learning Optimizer app.
 Current state: build passes, reminder settings work, normalized Postgres tables exist, and bootstrap/import tooling exists.
-Next task: harden PDF ingest, extend retrieval into broader search, and persist graph curation edits in durable app state.
+Next task: extend retrieval beyond the current concept-detail/quiz surfaces, improve PDF support, and continue production hardening.
 ```
 
 ## Maintenance Rule

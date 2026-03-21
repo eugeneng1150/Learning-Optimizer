@@ -30,6 +30,8 @@ export function IntakePanel({ modules, onMutate, onSourceCreated }: IntakePanelP
     }
   }, [modules, selectedModuleId]);
 
+  const hasModules = modules.length > 0;
+
   async function handleCreateModule(event: FormEvent<HTMLFormElement>) {
     event.preventDefault();
 
@@ -56,7 +58,7 @@ export function IntakePanel({ modules, onMutate, onSourceCreated }: IntakePanelP
       setModuleDescription("");
       await onMutate();
       setSelectedModuleId(moduleRecord.id);
-      setMessage("Subject created. Upload notes to generate the map.");
+      setMessage("Subject created. Upload notes for this subject to generate the first map.");
     });
   }
 
@@ -86,8 +88,24 @@ export function IntakePanel({ modules, onMutate, onSourceCreated }: IntakePanelP
             });
 
       if (!response.ok) {
-        const payload = (await response.json().catch(() => null)) as { error?: string } | null;
-        setMessage(payload?.error || "Source ingestion failed.");
+        const contentType = response.headers.get("content-type") ?? "";
+        let failureMessage = "Source ingestion failed.";
+
+        if (contentType.includes("application/json")) {
+          const payload = (await response.json().catch(() => null)) as { error?: string } | null;
+          failureMessage = payload?.error || failureMessage;
+        } else {
+          const raw = (await response.text().catch(() => "")).trim();
+          if (raw) {
+            failureMessage = raw.slice(0, 320);
+          }
+        }
+
+        if (response.status === 413) {
+          failureMessage = "This file is too large for the current upload path. Try a smaller PDF or split it first.";
+        }
+
+        setMessage(failureMessage);
         return;
       }
 
@@ -147,8 +165,11 @@ export function IntakePanel({ modules, onMutate, onSourceCreated }: IntakePanelP
       <section className="panel">
         <div className="panel-header">
           <div>
-            <p className="eyebrow">Stage 1</p>
-            <h2>Start with a subject</h2>
+            <p className="eyebrow">{hasModules ? "Optional" : "Setup"}</p>
+            <h2>{hasModules ? "Add another subject" : "Create a subject first"}</h2>
+            <p className="muted">
+              Every note upload belongs to one subject, so the app needs that container before Stage 1 can start.
+            </p>
           </div>
         </div>
 
@@ -181,105 +202,114 @@ export function IntakePanel({ modules, onMutate, onSourceCreated }: IntakePanelP
           <div>
             <p className="eyebrow">Stage 1</p>
             <h2>Upload notes</h2>
+            <p className="muted">
+              {hasModules
+                ? "Choose the subject these notes belong to, then paste text or upload a text-based PDF."
+                : "Create a subject above first. Once that exists, note upload becomes available here."}
+            </p>
           </div>
         </div>
 
-        <form className="form-grid" onSubmit={handleCreateSource}>
-          <div className="mode-switch" role="tablist" aria-label="Ingest mode">
-            <button
-              className={`nav-button ${ingestMode === "paste" ? "nav-button-active" : ""}`}
-              type="button"
-              aria-pressed={ingestMode === "paste"}
-              onClick={() => setIngestMode("paste")}
-            >
-              Paste text
-            </button>
-            <button
-              className={`nav-button ${ingestMode === "file" ? "nav-button-active" : ""}`}
-              type="button"
-              aria-pressed={ingestMode === "file"}
-              onClick={() => setIngestMode("file")}
-            >
-              Upload file
-            </button>
-          </div>
+        {hasModules ? (
+          <form className="form-grid" onSubmit={handleCreateSource}>
+            <div className="mode-switch" role="tablist" aria-label="Ingest mode">
+              <button
+                className={`nav-button ${ingestMode === "paste" ? "nav-button-active" : ""}`}
+                type="button"
+                aria-pressed={ingestMode === "paste"}
+                onClick={() => setIngestMode("paste")}
+              >
+                Paste text
+              </button>
+              <button
+                className={`nav-button ${ingestMode === "file" ? "nav-button-active" : ""}`}
+                type="button"
+                aria-pressed={ingestMode === "file"}
+                onClick={() => setIngestMode("file")}
+              >
+                Upload file
+              </button>
+            </div>
 
-          <label className="full-width">
-            Module
-            <select value={selectedModuleId} onChange={(event) => setSelectedModuleId(event.target.value)} required>
-              {modules.map((moduleRecord) => (
-                <option value={moduleRecord.id} key={moduleRecord.id}>
-                  {moduleRecord.code ? `${moduleRecord.code} · ` : ""}
-                  {moduleRecord.title}
-                </option>
-              ))}
-            </select>
-          </label>
-          <label className="full-width">
-            Source title
-            <input value={sourceTitle} onChange={(event) => setSourceTitle(event.target.value)} required />
-          </label>
-          {ingestMode === "paste" ? (
             <label className="full-width">
-              Source content
-              <textarea
-                value={sourceContent}
-                onChange={(event) => setSourceContent(event.target.value)}
-                rows={8}
-                placeholder="Paste notes, lecture text, or a cleaned PDF extract here..."
-                required
-              />
+              Subject
+              <select value={selectedModuleId} onChange={(event) => setSelectedModuleId(event.target.value)} required>
+                {modules.map((moduleRecord) => (
+                  <option value={moduleRecord.id} key={moduleRecord.id}>
+                    {moduleRecord.code ? `${moduleRecord.code} · ` : ""}
+                    {moduleRecord.title}
+                  </option>
+                ))}
+              </select>
             </label>
-          ) : (
-            <div className="full-width file-capture-card">
-              <label>
-                File upload
-                <input
-                  ref={fileInputRef}
-                  type="file"
-                  accept=".txt,.md,.pdf,text/plain,text/markdown,application/pdf"
-                  onChange={handleFileSelect}
-                />
-              </label>
-              <p className="muted">
-                Upload a local text, markdown, or PDF file. Text files are previewed in the browser. PDFs are sent to
-                the server for extraction before they enter the same source pipeline.
-              </p>
-              <label>
-                File preview
+            <label className="full-width">
+              Notes title
+              <input value={sourceTitle} onChange={(event) => setSourceTitle(event.target.value)} required />
+            </label>
+            {ingestMode === "paste" ? (
+              <label className="full-width">
+                Notes content
                 <textarea
                   value={sourceContent}
                   onChange={(event) => setSourceContent(event.target.value)}
                   rows={8}
-                  placeholder={
-                    selectedFileName?.toLowerCase().endsWith(".pdf")
-                      ? "PDF text will be extracted on the server during upload..."
-                      : "File contents will appear here after upload..."
-                  }
-                  required={!selectedFileName?.toLowerCase().endsWith(".pdf")}
+                  placeholder="Paste notes, lecture text, or a cleaned PDF extract here..."
+                  required
                 />
               </label>
-            </div>
-          )}
-          {selectedFileName ? (
-            <p className="status-text">Loaded file: {selectedFileName}</p>
-          ) : ingestMode === "file" ? (
-            <p className="muted">No file selected yet.</p>
-          ) : null}
-          <button
-            className="action-button"
-            type="submit"
-            disabled={
-              isPending ||
-              !modules.length ||
-              (ingestMode === "file"
-                ? !selectedFile || (!selectedFileName?.toLowerCase().endsWith(".pdf") && !sourceContent.trim())
-                : false)
-            }
-          >
-            {isPending ? "Processing..." : "Process notes"}
-          </button>
-        </form>
+            ) : (
+              <div className="full-width file-capture-card">
+                <label>
+                  File upload
+                  <input
+                    ref={fileInputRef}
+                    type="file"
+                    accept=".txt,.md,.pdf,text/plain,text/markdown,application/pdf"
+                    onChange={handleFileSelect}
+                  />
+                </label>
+                <p className="muted">
+                  Upload a local text, markdown, or PDF file. Text files are previewed in the browser. PDFs are sent
+                  to the server for extraction before they enter the same source pipeline. Scanned or image-only PDFs
+                  are not supported yet.
+                </p>
+                <label>
+                  File preview
+                  <textarea
+                    value={sourceContent}
+                    onChange={(event) => setSourceContent(event.target.value)}
+                    rows={8}
+                    placeholder={
+                      selectedFileName?.toLowerCase().endsWith(".pdf")
+                        ? "PDF text will be extracted on the server during upload..."
+                        : "File contents will appear here after upload..."
+                    }
+                    required={!selectedFileName?.toLowerCase().endsWith(".pdf")}
+                  />
+                </label>
+              </div>
+            )}
+            {selectedFileName ? (
+              <p className="status-text">Loaded file: {selectedFileName}</p>
+            ) : ingestMode === "file" ? (
+              <p className="muted">No file selected yet.</p>
+            ) : null}
+            <button
+              className="action-button"
+              type="submit"
+              disabled={
+                isPending ||
+                (ingestMode === "file"
+                  ? !selectedFile || (!selectedFileName?.toLowerCase().endsWith(".pdf") && !sourceContent.trim())
+                  : false)
+              }
+            >
+              {isPending ? "Processing..." : "Process notes"}
+            </button>
+          </form>
+        ) : (
+          <p className="status-text">Create your first subject above, then come back here to upload notes into it.</p>
+        )}
 
         {message ? <p className="status-text">{message}</p> : null}
       </section>

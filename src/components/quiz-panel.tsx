@@ -6,11 +6,13 @@ import { QuizItem } from "@/lib/types";
 
 interface QuizPanelProps {
   quizzes: QuizItem[];
+  title?: string;
+  description?: string;
   onRefresh: () => Promise<void>;
   onGenerateQuiz: () => Promise<void>;
 }
 
-export function QuizPanel({ quizzes, onRefresh, onGenerateQuiz }: QuizPanelProps) {
+export function QuizPanel({ quizzes, title = "Mixed recall testing", description, onRefresh, onGenerateQuiz }: QuizPanelProps) {
   const [index, setIndex] = useState(0);
   const [answer, setAnswer] = useState("");
   const [feedback, setFeedback] = useState<string | null>(null);
@@ -54,7 +56,7 @@ export function QuizPanel({ quizzes, onRefresh, onGenerateQuiz }: QuizPanelProps
       <div className="panel-header">
         <div>
           <p className="eyebrow">Quiz engine</p>
-          <h2>Mixed recall testing</h2>
+          <h2>{title}</h2>
         </div>
         <button
           className="ghost-button"
@@ -70,8 +72,8 @@ export function QuizPanel({ quizzes, onRefresh, onGenerateQuiz }: QuizPanelProps
         </button>
       </div>
       <p className="muted">
-        Regenerated quizzes now pull the most relevant stored note chunks before building the expected answer and
-        grounding excerpts.
+        {description ??
+          "Regenerated quizzes now pull the most relevant stored note chunks before building the expected answer and grounding excerpts."}
       </p>
 
       {quiz ? (

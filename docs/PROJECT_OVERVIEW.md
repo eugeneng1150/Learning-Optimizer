@@ -25,7 +25,8 @@ The desired outcome is:
 Near-term product direction:
 
 - the experience should become a guided flow, not a collection of separate workspaces
-- users should upload notes and land on a generated mindmap first
+- users should stay in upload after ingest and see clear subject-level progress
+- the map should support both a library graph and a concept graph
 - users should rate familiarity per concept before the quiz step
 - Gemini should become the primary semantic ingestion and retrieval layer for uploaded notes
 
@@ -36,7 +37,7 @@ The current repo contains a functional prototype with these implemented capabili
 Important distinction:
 
 - the repo now ships a guided post-login journey from upload to map to familiarity to quiz to review
-- the remaining work is to make ingest, retrieval, and persistence deeper rather than to keep redesigning the shell
+- the remaining work is to deepen retrieval, PDF support, persistence, and auth rather than to invent the basic workflow
 
 ### Ingestion
 
@@ -45,6 +46,7 @@ The system can:
 - create modules
 - create learning sources
 - accept pasted text plus `.txt`, `.md`, and text-based `.pdf` uploads
+- stay in upload after ingest and show per-subject note counts plus latest-note metadata
 - chunk source text
 - generate heuristic chunk vectors by default
 - extract candidate concepts from chunks
@@ -55,15 +57,9 @@ This is now hybrid rather than fully heuristic:
 - Gemini chunk embeddings are available for active ingest
 - the fallback path still uses heuristic chunk vectors and concept extraction
 
-Important current limit:
+Current limit:
 
-- PDF ingest is now server-side, but it is still limited to text-based PDFs with light cleanup only
-
-Planned next direction:
-
-- uploaded notes should be sent through Gemini-backed semantic processing
-- Gemini should return structured concepts, relationships, summaries, and grounded evidence
-- the app should persist the resulting graph and review-ready data for later quiz and study flows
+- PDF ingest is server-side and stable for text-based PDFs, but scanned or image-only PDFs still need OCR
 
 ### Retrieval
 
@@ -89,6 +85,12 @@ The graph layer can:
 - create weighted concept edges
 - tag relationship types such as similarity, prerequisite, part-of, applies-to, and contrast
 - compute module similarity based on concept overlap and cross-module edges
+- expose a `Library` mode for subjects and notes
+- show note-count badges on subject nodes
+- expand subject nodes into note nodes
+- route note selection into note-scoped quiz generation
+- keep the library graph radial, springy, and draggable
+- cap large branches with a `+N more` overflow node while the drawer keeps the full note list
 
 ### Review Scheduling
 
@@ -176,6 +178,7 @@ Bootstrap/import tooling now exists to move a local `.data/store.json` snapshot 
 
 - `src/lib/services/ingestion.ts`
 - `src/lib/services/graph.ts`
+- `src/lib/services/pdf.ts`
 - `src/lib/services/retrieval.ts`
 - `src/lib/services/review.ts`
 - `src/lib/services/quiz.ts`
@@ -186,12 +189,13 @@ These files isolate the core product logic from the UI.
 
 - `src/components/dashboard-shell.tsx`
 - `src/components/graph-canvas.tsx`
+- `src/components/library-graph.tsx`
 - `src/components/intake-panel.tsx`
 - `src/components/study-queue.tsx`
 - `src/components/quiz-panel.tsx`
 - `src/components/reminder-panel.tsx`
 
-These components power the current multi-workspace interface.
+These components power the current guided shell.
 
 ## API Surface
 
@@ -218,24 +222,34 @@ Important current limits:
 
 - the Postgres path still rewrites a whole normalized store rather than using narrower repositories
 - retrieval is only partially integrated and not yet exposed as general note search
-- PDF ingestion still needs stronger extraction quality and validation
+- PDF ingestion still needs OCR and stronger extraction quality for more complex documents
+- the library graph handles large branches with overflow, but very dense subjects still need more advanced clustering/search
 - no auth or user isolation beyond the demo data model
 - no real background queue for scheduled jobs
 - graph layout is persisted in browser workspace state, but graph curation changes are not yet durable app state
 
 ## Recommended Next Build Steps
 
-### 1. Improve Ingestion
+### 1. Improve Retrieval Surface
 
-Add Gemini-backed semantic ingestion for uploaded notes:
+Extend the current RAG slice beyond concept detail and quiz regeneration:
+
+- add broader note search
+- expose evidence lookups in more study surfaces
+- keep note-scoped quiz flows grounded in retrieved chunks
+
+### 2. Improve Ingestion Depth
+
+Continue hardening and improving the backend ingest path:
 
 - accept richer note inputs
-- send uploaded note content through Gemini processing
+- add OCR or scanned-PDF support
+- keep sending uploaded note content through Gemini processing
 - persist structured concept, relationship, summary, and evidence output
 - keep the app grounded in persisted evidence after ingestion
-- harden the new server-side PDF path with better extraction handling and validation
+- harden the server-side PDF path with better extraction handling and validation
 
-### 2. Expand Retrieval
+### 3. Expand Retrieval
 
 - reuse retrieval for quiz generation and grounded note search
 - keep answers tied to retrieved chunk evidence

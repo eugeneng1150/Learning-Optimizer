@@ -103,6 +103,43 @@ test("regenerating quizzes drops stale attempts tied to replaced quiz item ids",
   }
 });
 
+test("quiz generation can scope prompts to a single source", async () => {
+  const tempDir = await mkdtemp(path.join(os.tmpdir(), "learning-optimizer-"));
+  process.env.LEARNING_OPTIMIZER_DATA_DIR = tempDir;
+  resetStoreCache();
+
+  try {
+    const moduleRecord = await createModule({
+      title: "Statistics",
+      code: "ST2132",
+      description: "Probability and inference."
+    });
+
+    const sourceA = await createSource({
+      moduleId: moduleRecord.id,
+      title: "Lecture 16",
+      content: "Bayesian posterior updates combine priors with evidence. Conjugate priors keep updates tractable."
+    });
+    await createSource({
+      moduleId: moduleRecord.id,
+      title: "Lecture 17",
+      content: "Maximum likelihood estimation compares parameter values and optimization criteria."
+    });
+
+    const noteScoped = await generateQuizzes({ sourceId: sourceA.id });
+
+    assert.ok(noteScoped.length > 0);
+    assert.equal(
+      noteScoped.every((quiz) => quiz.evidenceRefs.every((evidence) => evidence.sourceId === sourceA.id)),
+      true
+    );
+  } finally {
+    delete process.env.LEARNING_OPTIMIZER_DATA_DIR;
+    resetStoreCache();
+    await rm(tempDir, { recursive: true, force: true });
+  }
+});
+
 test("saving familiarity updates review state and removes highly familiar concepts from the default due quiz set", async () => {
   const tempDir = await mkdtemp(path.join(os.tmpdir(), "learning-optimizer-"));
   process.env.LEARNING_OPTIMIZER_DATA_DIR = tempDir;

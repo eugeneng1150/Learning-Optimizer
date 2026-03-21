@@ -11,6 +11,7 @@ interface QueryConceptEvidenceInput {
   concept: ConceptRecord;
   chunks: ChunkRecord[];
   query: string;
+  restrictSourceId?: string;
 }
 
 function normalize(value: string): string {
@@ -77,7 +78,10 @@ export async function queryConceptEvidence(input: QueryConceptEvidenceInput): Pr
   const conceptChunks = input.chunks.filter(
     (chunk) => input.concept.sourceIds.includes(chunk.sourceId) || input.concept.moduleIds.includes(chunk.moduleId)
   );
-  const candidateChunks = conceptChunks.length ? conceptChunks : input.chunks;
+  const scopedChunks = input.restrictSourceId
+    ? conceptChunks.filter((chunk) => chunk.sourceId === input.restrictSourceId)
+    : conceptChunks;
+  const candidateChunks = scopedChunks.length ? scopedChunks : conceptChunks.length ? conceptChunks : input.chunks;
 
   let queryEmbedding = buildHeuristicEmbedding(input.query);
   let processor: RetrievalAnswer["processor"] = "heuristic";

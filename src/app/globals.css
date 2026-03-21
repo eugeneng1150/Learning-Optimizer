@@ -573,6 +573,81 @@ textarea {
   transition: transform 180ms ease, opacity 180ms ease, stroke 180ms ease, fill 180ms ease, r 180ms ease;
 }
 
+.library-subject,
+.library-note-button {
+  cursor: pointer;
+}
+
+.library-subject circle {
+  fill: rgba(94, 229, 212, 0.18);
+  stroke: rgba(223, 246, 255, 0.82);
+  stroke-width: 2.4;
+  transition: fill 160ms ease, stroke 160ms ease, transform 160ms ease;
+}
+
+.library-subject-selected circle {
+  fill: rgba(255, 107, 66, 0.26);
+  stroke: rgba(255, 224, 214, 0.92);
+  stroke-width: 3.2;
+}
+
+.library-subject-code {
+  fill: #edf9ff;
+  font-size: 14px;
+  font-weight: 700;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+  pointer-events: none;
+}
+
+.library-count-badge circle {
+  fill: rgba(8, 19, 31, 0.96);
+  stroke: rgba(247, 201, 95, 0.86);
+  stroke-width: 2;
+}
+
+.library-count-badge text {
+  fill: #fff8e4;
+  font-size: 13px;
+  font-weight: 700;
+  pointer-events: none;
+}
+
+.library-note-button rect {
+  fill: rgba(8, 19, 31, 0.94);
+  stroke: rgba(223, 246, 255, 0.58);
+  stroke-width: 1.8;
+  transition: fill 160ms ease, stroke 160ms ease, transform 160ms ease;
+}
+
+.library-note-selected .library-note-button rect {
+  fill: rgba(255, 107, 66, 0.2);
+  stroke: rgba(255, 224, 214, 0.88);
+  stroke-width: 2.4;
+}
+
+.library-overflow-note .library-note-button rect {
+  fill: rgba(247, 201, 95, 0.14);
+  stroke: rgba(247, 201, 95, 0.7);
+  stroke-dasharray: 6 5;
+}
+
+.library-overflow-note .library-note-button text {
+  fill: #fff2c2;
+}
+
+.library-note-button text {
+  fill: #edf9ff;
+  font-size: 12px;
+  font-weight: 700;
+  pointer-events: none;
+}
+
+.library-subject:hover circle,
+.library-note-button:hover rect {
+  transform: translateY(-1px);
+}
+
 .graph-label {
   fill: #edf9ff;
   font-size: 14px;
