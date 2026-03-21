@@ -27,31 +27,31 @@ const STAGES: Array<{
     id: "upload",
     label: "Upload",
     kicker: "Stage 1",
-    description: "Create a subject, add notes, and trigger processing."
+    description: "Add notes and generate the first study map."
   },
   {
     id: "map",
     label: "Map",
     kicker: "Stage 2",
-    description: "Inspect the generated mindmap before acting on it."
+    description: "Check the concept structure before moving forward."
   },
   {
     id: "familiarity",
     label: "Familiarity",
     kicker: "Stage 3",
-    description: "Tag weak versus comfortable concepts before quiz generation."
+    description: "Mark what feels weak, partial, or already solid."
   },
   {
     id: "quiz",
     label: "Quiz",
     kicker: "Stage 4",
-    description: "Run a focused recall round from the concept map."
+    description: "Test recall against the current map."
   },
   {
     id: "review",
     label: "Review",
     kicker: "Stage 5",
-    description: "Work the due queue and keep reminder cadence visible."
+    description: "Keep momentum with the due queue and reminders."
   }
 ];
 
@@ -76,8 +76,11 @@ export function DashboardShell({ initialSnapshot }: DashboardShellProps) {
   const hasMap = snapshot.graph.nodes.length > 0;
   const ratedCount = snapshot.conceptRecords.filter((concept) => ratedConceptIds.has(concept.id)).length;
   const currentStage = STAGES.find((stage) => stage.id === activeStage)!;
+  const activeStageIndex = STAGES.findIndex((stage) => stage.id === activeStage);
   const highPriorityCount = snapshot.conceptRecords.filter((concept) => concept.status === "confusing").length;
   const comfortableCount = snapshot.conceptRecords.filter((concept) => concept.status === "mastered").length;
+  const completedStageCount = countCompletedStages(snapshot, hasMap, ratedCount);
+  const progressPercent = Math.max(20, Math.round((completedStageCount / STAGES.length) * 100));
 
   async function refreshSnapshot() {
     const response = await fetch("/api/dashboard");
@@ -185,10 +188,51 @@ export function DashboardShell({ initialSnapshot }: DashboardShellProps) {
         <div>
           <p className="eyebrow">Learning Optimizer</p>
           <h1>Turn notes into a study map.</h1>
-          <p className="hero-copy">Upload notes, inspect the map, and keep moving through recall.</p>
+          <p className="hero-copy">Capture material once, then move through map, recall, and review with less friction.</p>
+          <div className="hero-progress">
+            <div className="hero-progress-label">
+              <strong>{completedStageCount}/5 stages active</strong>
+              <span>{currentStage.kicker} is open now</span>
+            </div>
+            <div className="hero-progress-track" aria-hidden="true">
+              <span style={{ width: `${progressPercent}%` }} />
+            </div>
+          </div>
           <div className="hero-message">
             <strong>{currentStage.label}</strong>
             <span>{lastAction ?? currentStage.description}</span>
+          </div>
+          <div className="hero-actions">
+            {activeStage === "upload" && hasMap ? (
+              <button className="action-button" type="button" onClick={() => handleOpenStage("map")}>
+                Open mindmap
+              </button>
+            ) : null}
+            {activeStage === "map" ? (
+              <button className="action-button" type="button" onClick={() => handleOpenStage("familiarity")}>
+                Continue to familiarity
+              </button>
+            ) : null}
+            {activeStage === "familiarity" ? (
+              <button className="action-button" type="button" onClick={() => handleOpenStage("quiz")}>
+                Continue to quiz
+              </button>
+            ) : null}
+            {activeStage === "quiz" ? (
+              <button className="action-button" type="button" onClick={() => handleOpenStage("review")}>
+                Continue to review
+              </button>
+            ) : null}
+            {activeStage === "review" ? (
+              <button className="action-button" type="button" onClick={() => handleGenerateQuiz()}>
+                Build mixed quiz
+              </button>
+            ) : null}
+            {activeStage !== "upload" ? (
+              <button className="ghost-button" type="button" onClick={() => handleOpenStage("upload")}>
+                Add more notes
+              </button>
+            ) : null}
           </div>
         </div>
         <div className="hero-metrics">
@@ -215,7 +259,9 @@ export function DashboardShell({ initialSnapshot }: DashboardShellProps) {
         {stageCards.map((stage) => (
           <button
             key={stage.id}
-            className={`stage-button ${stage.current ? "stage-button-active" : ""}`}
+            className={`stage-button ${stage.current ? "stage-button-active" : ""} ${
+              stage.index < activeStageIndex ? "stage-button-complete" : ""
+            }`}
             type="button"
             disabled={!stage.available}
             onClick={() => handleOpenStage(stage.id)}
@@ -257,22 +303,22 @@ export function DashboardShell({ initialSnapshot }: DashboardShellProps) {
             <section className="panel stage-brief">
               <div className="panel-header">
                 <div>
-                  <p className="eyebrow">What happens here</p>
-                  <h2>Get to the first useful screen quickly</h2>
+                  <p className="eyebrow">First pass</p>
+                  <h2>Get to the map quickly</h2>
                 </div>
               </div>
               <ul className="compact-list">
                 <li>
                   <strong>Create or pick a subject</strong>
-                  <span>Subjects organize uploads, concepts, and later review overlap.</span>
+                  <span>Keep each upload tied to a clear learning area from the start.</span>
                 </li>
                 <li>
-                  <strong>Paste notes or load a text file</strong>
-                  <span>The current branch still supports browser-loaded `.txt` and `.md` content only.</span>
+                  <strong>Paste notes or upload a file</strong>
+                  <span>Use pasted text, `.txt`, `.md`, or a text-based `.pdf`.</span>
                 </li>
                 <li>
-                  <strong>Process notes into the mindmap</strong>
-                  <span>Successful processing routes the shell straight to Map instead of leaving you on Upload.</span>
+                  <strong>Process notes into the study map</strong>
+                  <span>Successful uploads jump straight into the map instead of leaving you here.</span>
                 </li>
               </ul>
             </section>
@@ -283,7 +329,7 @@ export function DashboardShell({ initialSnapshot }: DashboardShellProps) {
               <div className="panel-header">
                 <div>
                   <p className="eyebrow">Current readiness</p>
-                  <h2>Before processing</h2>
+                  <h2>What is ready so far</h2>
                 </div>
                 <span className="panel-badge">{snapshot.sources.length} uploads</span>
               </div>
@@ -298,20 +344,10 @@ export function DashboardShell({ initialSnapshot }: DashboardShellProps) {
                 ) : (
                   <li>
                     <strong>No subjects yet</strong>
-                    <span>Create the first subject, then process notes to unlock the map.</span>
+                    <span>Create the first subject, then upload notes to unlock the map.</span>
                   </li>
                 )}
               </ul>
-              <div className="stage-actions">
-                <button
-                  className="action-button"
-                  type="button"
-                  disabled={!hasMap}
-                  onClick={() => handleOpenStage("map")}
-                >
-                  Open mindmap
-                </button>
-              </div>
             </section>
           </div>
         </section>
@@ -332,13 +368,13 @@ export function DashboardShell({ initialSnapshot }: DashboardShellProps) {
               <div className="panel-header">
                 <div>
                   <p className="eyebrow">Next move</p>
-                  <h2>Verify the structure, then triage familiarity</h2>
+                  <h2>Confirm the structure, then keep moving</h2>
                 </div>
                 <span className="panel-badge">{snapshot.edgeRecords.length} links</span>
               </div>
               <p className="muted">
-                This stage is the first success state after note processing. Confirm the generated concepts and open the
-                familiarity pass once the map looks credible.
+                This is the first useful screen after upload. Check whether the concept groups and relationships feel
+                credible, then move into familiarity.
               </p>
               <div className="stage-actions">
                 <button
@@ -400,7 +436,7 @@ export function DashboardShell({ initialSnapshot }: DashboardShellProps) {
               <div className="panel-header">
                 <div>
                   <p className="eyebrow">After this round</p>
-                  <h2>Push weak concepts into review</h2>
+                  <h2>Carry weak concepts into review</h2>
                 </div>
                 <span className="panel-badge">{snapshot.due.length} due</span>
               </div>
@@ -431,13 +467,13 @@ export function DashboardShell({ initialSnapshot }: DashboardShellProps) {
               <div className="panel-header">
                 <div>
                   <p className="eyebrow">Close the loop</p>
-                  <h2>Run review based on what is due now</h2>
+                  <h2>Keep recall active after the first pass</h2>
                 </div>
                 <span className="panel-badge">{snapshot.reminders.length} reminder jobs</span>
               </div>
               <p className="muted">
-                Review keeps the guided flow alive after the first quiz pass. Pull a mixed quiz set from the due queue
-                whenever you want another testing round.
+                Review is where the flow becomes a habit. Pull a mixed quiz from the due queue whenever you want a new
+                round instead of starting from scratch.
               </p>
               <div className="stage-actions">
                 <button className="action-button" type="button" onClick={() => handleGenerateQuiz()}>
@@ -453,9 +489,7 @@ export function DashboardShell({ initialSnapshot }: DashboardShellProps) {
 
       <footer className="footer-note">
         <span>
-          {isRefreshing
-            ? "Refreshing data..."
-            : "Guided shell active. Work forward from upload to map, familiarity, quiz, and review."}
+          {isRefreshing ? "Refreshing data..." : "Work forward through the flow, then loop back only when you add more notes."}
         </span>
       </footer>
     </main>
@@ -500,4 +534,30 @@ function getStageBadge(stageId: StageId, snapshot: DashboardSnapshot, ratedCount
     default:
       return "Waiting";
   }
+}
+
+function countCompletedStages(snapshot: DashboardSnapshot, hasMap: boolean, ratedCount: number) {
+  let count = 0;
+
+  if (snapshot.sources.length) {
+    count += 1;
+  }
+
+  if (hasMap) {
+    count += 1;
+  }
+
+  if (ratedCount) {
+    count += 1;
+  }
+
+  if (snapshot.quizzes.length) {
+    count += 1;
+  }
+
+  if (snapshot.due.length) {
+    count += 1;
+  }
+
+  return count;
 }
