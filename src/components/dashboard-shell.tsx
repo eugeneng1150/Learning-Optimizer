@@ -83,6 +83,7 @@ export function DashboardShell({ initialSnapshot }: DashboardShellProps) {
   const comfortableCount = snapshot.conceptRecords.filter((concept) => concept.status === "mastered").length;
   const completedStageCount = countCompletedStages(snapshot, hasMap, ratedCount);
   const progressPercent = Math.max(20, Math.round((completedStageCount / STAGES.length) * 100));
+  const stageFacts = getStageFacts(activeStage, snapshot, ratedCount, highPriorityCount, comfortableCount);
 
   async function refreshSnapshot() {
     const response = await fetch("/api/dashboard");
@@ -187,11 +188,17 @@ export function DashboardShell({ initialSnapshot }: DashboardShellProps) {
 
   return (
     <main className="page-shell">
-      <section className="hero guided-hero">
-        <div>
+      <section className="hero guided-hero hero-compact">
+        <div className="hero-main">
           <p className="eyebrow">Learning Optimizer</p>
-          <h1>Turn notes into a study map.</h1>
-          <p className="hero-copy">Capture material once, then move through map, recall, and review with less friction.</p>
+          <div className="hero-heading-row">
+            <h1>Study one step at a time.</h1>
+            <span className="panel-badge">{currentStage.kicker}</span>
+          </div>
+          <p className="hero-copy">
+            Keep one clear task on screen: add notes, check the map, rate confidence, test recall, then return to
+            review.
+          </p>
           <div className="hero-progress">
             <div className="hero-progress-label">
               <strong>{completedStageCount}/5 stages active</strong>
@@ -238,24 +245,6 @@ export function DashboardShell({ initialSnapshot }: DashboardShellProps) {
             ) : null}
           </div>
         </div>
-        <div className="hero-metrics">
-          <article>
-            <strong>{snapshot.modules.length}</strong>
-            <span>subjects</span>
-          </article>
-          <article>
-            <strong>{snapshot.graph.nodes.length}</strong>
-            <span>mapped concepts</span>
-          </article>
-          <article>
-            <strong>{ratedCount}</strong>
-            <span>familiarity triaged</span>
-          </article>
-          <article>
-            <strong>{snapshot.due.length}</strong>
-            <span>due now</span>
-          </article>
-        </div>
       </section>
 
       <section className="stage-rail" aria-label="Guided stages">
@@ -278,230 +267,165 @@ export function DashboardShell({ initialSnapshot }: DashboardShellProps) {
         ))}
       </section>
 
-      <section className="panel stage-overview">
+      <section className="panel stage-focus">
         <div>
           <p className="eyebrow">{currentStage.kicker}</p>
           <h2>{currentStage.label}</h2>
           <p className="stage-copy">{currentStage.description}</p>
         </div>
-        <div className="stage-overview-metrics">
-          <article>
-            <strong>{highPriorityCount}</strong>
-            <span>need work</span>
-          </article>
-          <article>
-            <strong>{comfortableCount}</strong>
-            <span>comfortable</span>
-          </article>
-          <article>
-            <strong>{snapshot.quizzes.length}</strong>
-            <span>quiz prompts</span>
-          </article>
-        </div>
+        <ul className="fact-row">
+          {stageFacts.map((fact) => (
+            <li key={fact.label}>
+              <strong>{fact.value}</strong>
+              <span>{fact.label}</span>
+            </li>
+          ))}
+        </ul>
       </section>
 
       {activeStage === "upload" ? (
-        <section className="dashboard-grid guided-stage-grid">
-          <div className="main-column">
-            <section className="panel stage-brief">
-              <div className="panel-header">
-                <div>
-                  <p className="eyebrow">First pass</p>
-                  <h2>Get to the map quickly</h2>
-                </div>
+        <section className="single-column guided-stage-grid">
+          <IntakePanel modules={snapshot.modules} onMutate={refreshInTransition} onSourceCreated={handleSourceCreated} />
+          <section className="panel stage-support">
+            <div className="panel-header">
+              <div>
+                <p className="eyebrow">Ready so far</p>
+                <h2>Subjects in focus</h2>
               </div>
-              <ul className="compact-list">
-                <li>
-                  <strong>Create or pick a subject</strong>
-                  <span>Keep each upload tied to a clear learning area from the start.</span>
-                </li>
-                <li>
-                  <strong>Paste notes or upload a file</strong>
-                  <span>Use pasted text, `.txt`, `.md`, or a text-based `.pdf`.</span>
-                </li>
-                <li>
-                  <strong>Process notes into the study map</strong>
-                  <span>Successful uploads jump straight into the map instead of leaving you here.</span>
-                </li>
-              </ul>
-            </section>
-            <IntakePanel modules={snapshot.modules} onMutate={refreshInTransition} onSourceCreated={handleSourceCreated} />
-          </div>
-          <div className="side-column">
-            <section className="panel stage-card">
-              <div className="panel-header">
-                <div>
-                  <p className="eyebrow">Current readiness</p>
-                  <h2>What is ready so far</h2>
-                </div>
-                <span className="panel-badge">{snapshot.sources.length} uploads</span>
-              </div>
-              <ul className="compact-list">
-                {snapshot.modules.length ? (
-                  snapshot.modules.map((moduleRecord) => (
-                    <li key={moduleRecord.id}>
-                      <strong>{moduleRecord.code ? `${moduleRecord.code} · ` : ""}{moduleRecord.title}</strong>
-                      <span>{moduleRecord.description}</span>
-                    </li>
-                  ))
-                ) : (
-                  <li>
-                    <strong>No subjects yet</strong>
-                    <span>Create the first subject, then upload notes to unlock the map.</span>
+              <span className="panel-badge">{snapshot.sources.length} uploads</span>
+            </div>
+            <ul className="compact-list">
+              {snapshot.modules.length ? (
+                snapshot.modules.map((moduleRecord) => (
+                  <li key={moduleRecord.id}>
+                    <strong>{moduleRecord.code ? `${moduleRecord.code} · ` : ""}{moduleRecord.title}</strong>
+                    <span>{moduleRecord.description}</span>
                   </li>
-                )}
-              </ul>
-            </section>
-          </div>
+                ))
+              ) : (
+                <li>
+                  <strong>No subjects yet</strong>
+                  <span>Create the first subject, then upload notes to unlock the map.</span>
+                </li>
+              )}
+            </ul>
+          </section>
         </section>
       ) : null}
 
       {activeStage === "map" ? (
-        <section className="dashboard-grid guided-stage-grid">
-          <div className="main-column">
-            <GraphCanvas
-              nodes={snapshot.graph.nodes}
-              edges={snapshot.graph.edges}
-              selectedConceptId={selectedConceptId}
-              onSelectConcept={setSelectedConceptId}
-            />
-          </div>
-          <div className="side-column">
-            <section className="panel stage-card">
+        <section className="single-column guided-stage-grid">
+          {selectedConcept ? (
+            <section className="panel selection-summary">
+              <div>
+                <p className="eyebrow">Selected concept</p>
+                <h2>{selectedConcept.title}</h2>
+                <p className="stage-copy">{selectedConcept.summary}</p>
+              </div>
+              <ul className="fact-row">
+                <li>
+                  <strong>{relatedEdges.length}</strong>
+                  <span>connected links</span>
+                </li>
+                <li>
+                  <strong>{selectedConcept.evidenceRefs.length}</strong>
+                  <span>evidence refs</span>
+                </li>
+                <li>
+                  <strong>{selectedConcept.moduleIds.length}</strong>
+                  <span>subjects</span>
+                </li>
+              </ul>
+            </section>
+          ) : null}
+          <GraphCanvas
+            nodes={snapshot.graph.nodes}
+            edges={snapshot.graph.edges}
+            selectedConceptId={selectedConceptId}
+            onSelectConcept={setSelectedConceptId}
+          />
+          {lastIngestionResult ? (
+            <section className="panel stage-support">
               <div className="panel-header">
                 <div>
-                  <p className="eyebrow">Next move</p>
-                  <h2>Confirm the structure, then keep moving</h2>
+                  <p className="eyebrow">Latest ingest</p>
+                  <h2>{lastIngestionResult.source.title}</h2>
                 </div>
-                <span className="panel-badge">{snapshot.edgeRecords.length} links</span>
+                <span
+                  className={`status-pill ${lastIngestionResult.fallbackReason ? "status-confusing" : "status-active"}`}
+                >
+                  {lastIngestionResult.processor === "gemini" ? "Gemini" : "Heuristic"}
+                </span>
               </div>
               <p className="muted">
-                This is the first useful screen after upload. Check whether the concept groups and relationships feel
-                credible, then move into familiarity.
+                {lastIngestionResult.conceptCount} concepts and {lastIngestionResult.edgeCount} links were added from
+                the last upload.
               </p>
-              {lastIngestionResult ? (
-                <div className="status-summary-card">
-                  <div className="status-summary-header">
-                    <strong>{lastIngestionResult.processor === "gemini" ? "Processed with Gemini" : "Processed with heuristics"}</strong>
-                    <span className={`status-pill ${lastIngestionResult.fallbackReason ? "status-confusing" : "status-active"}`}>
-                      {lastIngestionResult.conceptCount} concepts
-                    </span>
-                  </div>
-                  <p className="muted">
-                    {lastIngestionResult.edgeCount} links created from {lastIngestionResult.source.title}.
-                  </p>
-                  {lastIngestionResult.fallbackReason ? (
-                    <p className="status-text">{lastIngestionResult.fallbackReason}</p>
-                  ) : null}
-                </div>
-              ) : null}
-              <div className="stage-actions">
-                <button
-                  className="action-button"
-                  type="button"
-                  disabled={!hasMap}
-                  onClick={() => handleOpenStage("familiarity")}
-                >
-                  Continue to familiarity
-                </button>
-              </div>
+              {lastIngestionResult.fallbackReason ? <p className="status-text">{lastIngestionResult.fallbackReason}</p> : null}
             </section>
-            <ConceptPanel
-              concept={selectedConcept}
-              modules={snapshot.modules}
-              relatedEdges={relatedEdges}
-              onMutate={refreshInTransition}
-            />
-          </div>
+          ) : null}
+          <ConceptPanel
+            concept={selectedConcept}
+            modules={snapshot.modules}
+            relatedEdges={relatedEdges}
+            onMutate={refreshInTransition}
+          />
         </section>
       ) : null}
 
       {activeStage === "familiarity" ? (
-        <section className="dashboard-grid guided-stage-grid">
-          <div className="main-column">
-            <FamiliarityStage
-              concepts={snapshot.conceptRecords}
-              ratedCount={ratedCount}
-              selectedConceptId={selectedConceptId}
-              onContinue={() => handleOpenStage("quiz")}
-              onOpenMap={() => handleOpenStage("map")}
-              onRate={handleRateConcept}
-              onSelectConcept={setSelectedConceptId}
-            />
-          </div>
-          <div className="side-column">
-            <ConceptPanel
-              concept={selectedConcept}
-              familiarityRating={selectedFamiliarity?.rating}
-              modules={snapshot.modules}
-              relatedEdges={relatedEdges}
-              onMutate={refreshInTransition}
-            />
-          </div>
+        <section className="single-column guided-stage-grid">
+          <FamiliarityStage
+            concepts={snapshot.conceptRecords}
+            ratedCount={ratedCount}
+            selectedConceptId={selectedConceptId}
+            onContinue={() => handleOpenStage("quiz")}
+            onOpenMap={() => handleOpenStage("map")}
+            onRate={handleRateConcept}
+            onSelectConcept={setSelectedConceptId}
+          />
+          <ConceptPanel
+            concept={selectedConcept}
+            familiarityRating={selectedFamiliarity?.rating}
+            modules={snapshot.modules}
+            relatedEdges={relatedEdges}
+            onMutate={refreshInTransition}
+          />
         </section>
       ) : null}
 
       {activeStage === "quiz" ? (
-        <section className="dashboard-grid guided-stage-grid">
-          <div className="main-column">
-            <QuizPanel
-              quizzes={snapshot.quizzes}
-              onGenerateQuiz={() => handleGenerateQuiz()}
-              onRefresh={refreshInTransition}
-            />
-          </div>
-          <div className="side-column">
-            <section className="panel stage-card">
-              <div className="panel-header">
-                <div>
-                  <p className="eyebrow">After this round</p>
-                  <h2>Carry weak concepts into review</h2>
-                </div>
-                <span className="panel-badge">{snapshot.due.length} due</span>
+        <section className="single-column guided-stage-grid">
+          <QuizPanel
+            quizzes={snapshot.quizzes}
+            onGenerateQuiz={() => handleGenerateQuiz()}
+            onRefresh={refreshInTransition}
+          />
+          <section className="panel stage-support">
+            <div className="panel-header">
+              <div>
+                <p className="eyebrow">After this round</p>
+                <h2>Carry weak concepts into review</h2>
               </div>
-              <ul className="compact-list">
-                <li>
-                  <strong>{highPriorityCount} concepts tagged as weak</strong>
-                  <span>These are the best candidates for targeted quiz regeneration or review follow-up.</span>
-                </li>
-                <li>
-                  <strong>{snapshot.quizzes.length} prompts available</strong>
-                  <span>Regenerate if the current set is stale, then move into the review queue.</span>
-                </li>
-              </ul>
-              <div className="stage-actions">
-                <button className="action-button" type="button" onClick={() => handleOpenStage("review")}>
-                  Continue to review
-                </button>
-              </div>
-            </section>
-          </div>
+              <span className="panel-badge">{snapshot.due.length} due</span>
+            </div>
+            <ul className="compact-list">
+              <li>
+                <strong>{highPriorityCount} concepts still need work</strong>
+                <span>These are the best targets for the next focused review cycle.</span>
+              </li>
+              <li>
+                <strong>{snapshot.quizzes.length} prompts are ready</strong>
+                <span>Regenerate if this set feels stale, then move into the review queue.</span>
+              </li>
+            </ul>
+          </section>
         </section>
       ) : null}
 
       {activeStage === "review" ? (
-        <section className="two-column-section">
-          <div className="stack">
-            <section className="panel stage-card">
-              <div className="panel-header">
-                <div>
-                  <p className="eyebrow">Close the loop</p>
-                  <h2>Keep recall active after the first pass</h2>
-                </div>
-                <span className="panel-badge">{snapshot.reminders.length} reminder jobs</span>
-              </div>
-              <p className="muted">
-                Review is where the flow becomes a habit. Pull a mixed quiz from the due queue whenever you want a new
-                round instead of starting from scratch.
-              </p>
-              <div className="stage-actions">
-                <button className="action-button" type="button" onClick={() => handleGenerateQuiz()}>
-                  Build mixed quiz
-                </button>
-              </div>
-            </section>
-            <StudyQueue due={snapshot.due} onGenerateQuiz={handleGenerateQuiz} />
-          </div>
+        <section className="single-column guided-stage-grid">
+          <StudyQueue due={snapshot.due} onGenerateQuiz={handleGenerateQuiz} />
           <ReminderPanel reminders={snapshot.reminders} initialSettings={snapshot.reminderSettings} />
         </section>
       ) : null}
@@ -590,4 +514,47 @@ function describeSourceCreation(result: SourceCreationResult) {
   }
 
   return base;
+}
+
+function getStageFacts(
+  stageId: StageId,
+  snapshot: DashboardSnapshot,
+  ratedCount: number,
+  highPriorityCount: number,
+  comfortableCount: number
+) {
+  switch (stageId) {
+    case "upload":
+      return [
+        { label: "subjects", value: snapshot.modules.length },
+        { label: "uploads", value: snapshot.sources.length },
+        { label: "next screen", value: "mindmap" }
+      ];
+    case "map":
+      return [
+        { label: "concepts", value: snapshot.graph.nodes.length },
+        { label: "links", value: snapshot.edgeRecords.length },
+        { label: "selected", value: snapshot.graph.nodes.length ? "inspect a node" : "waiting" }
+      ];
+    case "familiarity":
+      return [
+        { label: "triaged", value: `${ratedCount}/${snapshot.conceptRecords.length}` },
+        { label: "need work", value: highPriorityCount },
+        { label: "comfortable", value: comfortableCount }
+      ];
+    case "quiz":
+      return [
+        { label: "prompts", value: snapshot.quizzes.length },
+        { label: "due after quiz", value: snapshot.due.length },
+        { label: "focus", value: highPriorityCount }
+      ];
+    case "review":
+      return [
+        { label: "due now", value: snapshot.due.length },
+        { label: "reminder jobs", value: snapshot.reminders.length },
+        { label: "comfortable", value: comfortableCount }
+      ];
+    default:
+      return [];
+  }
 }
